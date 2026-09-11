@@ -1,0 +1,242 @@
+# arcgis-mvt-renderer
+
+<p align="center">
+  <b>面向 Vue 3 的 ArcGIS Maps SDK 与 MapLibre GL 双模式无缝兼容 MVT (Mapbox Vector Tile) 矢量切片渲染组件。</b>
+</p>
+
+<p align="center">
+  <b>简体中文</b> | <a href="./README.md">English</a>
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/arcgis-mvt-renderer"><img src="https://img.shields.io/npm/v/arcgis-mvt-renderer.svg" alt="npm version"></a>
+  <a href="https://github.com/vuejs/core"><img src="https://img.shields.io/badge/vue-3.x-brightgreen.svg" alt="vue 3"></a>
+  <a href="https://developers.arcgis.com/javascript/"><img src="https://img.shields.io/badge/@arcgis/core-4.x-blue.svg" alt="arcgis"></a>
+  <a href="https://maplibre.org/"><img src="https://img.shields.io/badge/maplibre--gl-3.x%20--%205.x-teal.svg" alt="maplibre"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/npm/l/arcgis-mvt-renderer.svg" alt="license"></a>
+</p>
+
+---
+
+## 💡 为什么需要 `arcgis-mvt-renderer`？
+
+在 **ArcGIS Maps SDK for JavaScript** 中加载第三方或自建的 MVT (Mapbox Vector Tile) 矢量切片时，经常会遇到一个棘手的问题：**多边形实心填充面（`type: "fill"`）完全无法显示或变透明，而边框轮廓线（`type: "line"`）却能正常渲染**。
+
+### 根本原因剖析
+- **MVT 2.1 规范要求**：在瓦片屏幕像素坐标系（Y 轴向下）中，**外环必须是顺时针（CW）**，内环/孔洞必须是**逆时针（CCW）**。
+- **ArcGIS 的严格限制 vs. MapLibre 的高容错**：大多数后端数据切片管道（例如 PostGIS 未调用 `ST_ForcePolygonCW` 的 `ST_AsMVT`、GeoServer、自研 Python/Go 切片脚本）默认以大地坐标系（外环逆时针）导出。ArcGIS 的底层 WebGL 三角剖分引擎会严格把逆时针外环判定为“没有外边界的无主洞”，导致生成的三角面片数为 0，实心面彻底消失。
+- **解决方案**：MapLibre GL 内部使用鲁棒的 `earcut` 多边形剖分算法，对环绕向容错极高，能够稳定渲染非标绕向的面数据。
+
+`arcgis-mvt-renderer` 将两者的优势结合：
+1. **统一传递标准 `:style`**：直接接收原生的 Mapbox Style Spec v8 样式对象或远程 `style.json` 地址，无需自行适配转换。
+2. **双模式自适应渲染**：包裹在 `<MaplibreProvider>` 内时自动通过 MapLibre GL 高性能渲染并保持视角与 ArcGIS 实时同步；未包裹时自动降级回退至原生 `@arcgis/core/layers/VectorTileLayer`。
+3. **彻底解耦第三方框架**：不绑定任何私有 UI 封装。无论是纯原生 `@arcgis/core`、`@vuesri/core` 还是其它 Vue 3 项目均可无缝集成。
+
+---
+
+## 🌟 核心特性
+
+- 🎯 **传统标准 `:style` 入参**：直接使用标准 Mapbox Style Spec v8 样式对象或远程 `style.json` URL，无需在业务中做转译。
+- ⚡ **双模式自适应架构**：
+  - **MapLibre 模式**：利用 MapLibre GL 解决实心多边形缺失与性能瓶颈，视角与 ArcGIS 绝对同步。
+  - **ArcGIS 原生模式**：独立使用时自动回退为原生的 `VectorTileLayer`。
+- 🔄 **高精度视口同步**：实时将 ArcGIS MapView 的经纬度中心、分辨率、缩放级别与旋转角同步至 MapLibre。
+- 🛡️ **作用域安全隔离**：为动态添加的 Sources 和 Layers 自动分配前缀与唯一 ID，支持同屏多个组件实例共存而不发生 ID 碰撞。
+- 🧩 **零框架强绑定**：自动从属性、`inject('view')` 或 `@vuesri/core` 探查当前 ArcGIS MapView 实例，随插随用。
+- 📦 **开箱即用 TypeScript**：内置完整的 `.d.ts` 类型声明文件。
+
+---
+
+## 📦 安装
+
+```bash
+# 使用 pnpm
+pnpm add arcgis-mvt-renderer
+
+# 使用 npm
+npm install arcgis-mvt-renderer
+
+# 使用 yarn
+yarn add arcgis-mvt-renderer
+```
+
+### Peer Dependencies
+请确保宿主项目中安装了基础依赖：
+
+```bash
+pnpm add vue maplibre-gl @arcgis/core
+```
+
+---
+
+## 🚀 快速上手
+
+### 1. 全局注册插件（可选）
+
+```typescript
+// main.ts
+import { createApp } from 'vue'
+import ArcGISMvtRenderer from 'arcgis-mvt-renderer'
+import App from './App.vue'
+
+const app = createApp(App)
+app.use(ArcGISMvtRenderer)
+app.mount('#app')
+```
+
+### 2. 使用示例
+
+#### 模式一：搭配 `MaplibreProvider` 使用（推荐，解决面填充缺失与复杂切片性能问题）
+
+使用 `<MaplibreProvider>` 包裹 `<MvtRenderer>`。Provider 会在地图上层建立同步视口层：
+
+```vue
+<template>
+  <div ref="mapContainer" class="map-view">
+    <!-- MaplibreProvider 会自动将自身的 MapLibre 视角与 arcgisView 保持同步 -->
+    <MaplibreProvider :view="arcgisView">
+      <MvtRenderer
+        :style="vectorTileStyle"
+        tile-url="https://your-server.com/v1/mvt/{z}/{x}/{y}.pbf"
+      />
+    </MaplibreProvider>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import MapView from '@arcgis/core/views/MapView'
+import Map from '@arcgis/core/Map'
+import { MaplibreProvider, MvtRenderer } from 'arcgis-mvt-renderer'
+
+const mapContainer = ref<HTMLDivElement>()
+const arcgisView = ref<MapView>()
+
+onMounted(() => {
+  arcgisView.value = new MapView({
+    container: mapContainer.value,
+    map: new Map({ basemap: 'satellite' }),
+    center: [114.3, 30.5],
+    zoom: 10
+  })
+})
+
+// 标准 Mapbox Style Spec v8 样式对象（也可以直接传递指向 style.json 的 URL 字符串）
+const vectorTileStyle = ref({
+  version: 8,
+  sources: {
+    'my-source': {
+      type: 'vector',
+      tiles: ['https://your-server.com/v1/mvt/{z}/{x}/{y}.pbf']
+    }
+  },
+  layers: [
+    {
+      id: 'my-polygon-fill',
+      type: 'fill',
+      source: 'my-source',
+      'source-layer': 'my_layer_name',
+      paint: {
+        'fill-color': '#409EFF',
+        'fill-opacity': 0.7
+      }
+    },
+    {
+      id: 'my-polygon-outline',
+      type: 'line',
+      source: 'my-source',
+      'source-layer': 'my_layer_name',
+      paint: {
+        'line-color': '#1E3A8A',
+        'line-width': 1.5
+      }
+    }
+  ]
+})
+</script>
+
+<style scoped>
+.map-view {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+}
+</style>
+```
+
+#### 模式二：在 `@vuesri/core` 中使用（零配置自动发现）
+
+如果你在项目中使用 `@vuesri/core`，`<MaplibreProvider>` 会自动通过 `inject('view')` 寻找到父级 `MapView`，**无需显式传递 `:view`**：
+
+```vue
+<template>
+  <VaMapView :default-options="mapOptions">
+    <!-- 自动绑定父级 VaMapView 实例 -->
+    <MaplibreProvider>
+      <MvtRenderer :style="vectorTileStyle" />
+    </MaplibreProvider>
+
+    <!-- 底图与其他业务图层 -->
+    <VaTdtBasemap :type="'vec_w'" />
+  </VaMapView>
+</template>
+
+<script setup lang="ts">
+import { MaplibreProvider, MvtRenderer } from 'arcgis-mvt-renderer'
+// ...
+</script>
+```
+
+#### 模式三：ArcGIS 原生模式（不包裹 Provider）
+
+当在 `<MaplibreProvider>` 外部独立使用时，`<MvtRenderer>` 自动降级并挂载原生 `@arcgis/core/layers/VectorTileLayer`：
+
+```vue
+<template>
+  <VaMapView :default-options="mapOptions">
+    <!-- 自动渲染原生 VectorTileLayer 并参与图层排序 -->
+    <MvtRenderer
+      :style="vectorTileStyle"
+      :index="1"
+    />
+  </VaMapView>
+</template>
+```
+
+---
+
+## 📖 API 参数详解
+
+### `<MvtRenderer>`
+
+| 属性名 | 类型 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `style` | `string \| Record<string, any>` | **必填** | 标准 Mapbox Style Spec v8 样式对象、JSON 字符串，或远程 `style.json` 访问地址。 |
+| `index` | `number` | `undefined` | ArcGIS 模式下的图层层级（映射至 `view.map.add(layer, index)`）。 |
+| `beforeId` | `string` | `undefined` | MapLibre 模式下指定插入在该图层之前（映射至 `addLayer(layer, beforeId)`）。 |
+| `tileUrl` | `string` | `undefined` | 可选，动态覆盖或替换样式中 vector source 的切片 URL 请求模板。 |
+| `view` | `MapView` | `undefined` | 可选，显式传入 ArcGIS MapView 实例。若不传则自动通过 `inject('view')` 查找。 |
+
+### `<MaplibreProvider>`
+
+| 属性名 | 类型 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `options` | `Partial<MapOptions>` | `{}` | 透传给 `maplibre-gl.Map` 构造函数的初始化配置。 |
+| `view` | `MapView` | `undefined` | 可选，显式传入 ArcGIS MapView 实例。若不传则自动通过 `inject('view')` 查找。 |
+
+### 组件暴露方法与引用 (defineExpose)
+
+#### `MvtRenderer`
+- `isMapLibreMode`: `ComputedRef<boolean>` — 当前是否处于 MapLibre 渲染模式。
+- `resolvedStyleObject`: `ComputedRef<Record<string, any> | null>` — 当前解析后最终生效的样式对象。
+- `arcgisLayer`: `() => VectorTileLayer | null` — 获取内部创建的原生 ArcGIS `VectorTileLayer` 实例（仅在 ArcGIS 模式下有效）。
+
+#### `MaplibreProvider`
+- `map`: `ShallowRef<maplibregl.Map | null>` — 获取底层的 MapLibre GL 实例。
+- `syncMap`: `() => void` — 手动强制触发一次从 ArcGIS MapView 到 MapLibre GL 的视角同步。
+
+---
+
+## 📄 开源协议
+
+[MIT License](LICENSE) © 2026
