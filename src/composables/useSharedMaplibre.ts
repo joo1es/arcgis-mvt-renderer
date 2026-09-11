@@ -1,13 +1,18 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import * as reactiveUtils from '@arcgis/core/core/reactiveUtils'
+import type { MvtEngineType } from '../types'
 
 export interface SharedEngineOptions {
-  engine?: 'maplibre' | 'mapbox' | 'arcgis'
+  engine?: MvtEngineType
   accessToken?: string
   engineInstance?: any
   mapOptions?: any
+}
+
+export interface DetectedEngineResult {
+  engine: 'maplibre' | 'mapbox' | 'arcgis'
+  lib?: any
 }
 
 interface SharedEngineEntry {
@@ -43,31 +48,103 @@ const normalizeLongitude = (targetLon: number, currentLon: number) => {
 }
 
 /**
- * 动态加载并解析地图引擎库 (MapLibre GL 或 Mapbox GL)
+ * 智能自动探测当前环境中安装并可用的渲染引擎
  */
-async function resolveEngineLib(options?: SharedEngineOptions): Promise<any> {
+export async function detectAvailableEngine(
+  preferredEngine: MvtEngineType = 'auto',
+  options?: SharedEngineOptions
+): Promise<DetectedEngineResult> {
+  // 1. 显式传入了外部引擎库实例
   if (options?.engineInstance) {
-    return options.engineInstance
+    const engineName = preferredEngine === 'mapbox' ? 'mapbox' : 'maplibre'
+    return { engine: engineName, lib: options.engineInstance }
   }
 
-  if (options?.engine === 'mapbox') {
+  // 2. 显式指定 'arcgis' 原生模式
+  if (preferredEngine === 'arcgis') {
+    return { engine: 'arcgis' }
+  }
+
+  const tryLoadMaplibre = async () => {
+    if (typeof window !== 'undefined' && (window as any).maplibregl) {
+      return (window as any).maplibregl
+    }
+    if (maplibregl) {
+      return maplibregl
+    }
+    try {
+      const pkg = 'maplibre-gl'
+      const mod = await import(/* @vite-ignore */ pkg)
+      return mod.default || mod
+    } catch {
+      return null
+    }
+  }
+
+  const tryLoadMapbox = async () => {
     if (typeof window !== 'undefined' && (window as any).mapboxgl) {
       return (window as any).mapboxgl
     }
     try {
-      // 使用动态导入执行器，避免在宿主未安装 mapbox-gl 时 Vite 静态分析报 500 错误
-      const dynamicImport = new Function('specifier', 'return import(specifier)')
-      const mod = await dynamicImport('mapbox-gl')
+      const pkg = 'mapbox-gl'
+      const mod = await import(/* @vite-ignore */ pkg)
       return mod.default || mod
     } catch {
-      throw new Error(
-        '[arcgis-mvt-renderer] 指定了 engine="mapbox"，但当前环境未找到 mapbox-gl 模块。\n' +
-        '请在项目中运行 `pnpm add mapbox-gl`，或通过 `engineInstance` 参数传入 mapboxgl 实例。'
-      )
+      return null
     }
   }
 
-  return maplibregl
+  // 3. 显式指定 'maplibre'
+  if (preferredEngine === 'maplibre') {
+    const lib = await tryLoadMaplibre()
+    if (!lib) {
+      throw new Error(
+        '[arcgis-mvt-renderer] 指定了 engine="maplibre"，但在当前环境中未找到 maplibre-gl。\n' +
+        '请运行 `pnpm add maplibre-gl` 安装，或使用默认的 engine="auto"。'
+      )
+    }
+    return { engine: 'maplibre', lib }
+  }
+
+  // 4. 显式指定 'mapbox'
+  if (preferredEngine === 'mapbox') {
+    const lib = await tryLoadMapbox()
+    if (!lib) {
+      throw new Error(
+        '[arcgis-mvt-renderer] 指定了 engine="mapbox"，但在当前环境中未找到 mapbox-gl。\n' +
+        '请运行 `pnpm add mapbox-gl` 安装，或使用默认的 engine="auto"。'
+      )
+    }
+    return { engine: 'mapbox', lib }
+  }
+
+  // 5. 'auto' 自动档智能探测：
+  // 5.1 若传入了 accessToken，优先检测 mapbox-gl
+  if (options?.accessToken) {
+    const mapboxLib = await tryLoadMapbox()
+    if (mapboxLib) {
+      return { engine: 'mapbox', lib: mapboxLib }
+    }
+  }
+
+  // 5.2 默认优先检测开源 maplibre-gl
+  const maplibreLib = await tryLoadMaplibre()
+  if (maplibreLib) {
+    return { engine: 'maplibre', lib: maplibreLib }
+  }
+
+  // 5.3 尝试检测 mapbox-gl
+  const mapboxLib = await tryLoadMapbox()
+  if (mapboxLib) {
+    return { engine: 'mapbox', lib: mapboxLib }
+  }
+
+  // 5.4 两者均未安装，安全降级到 arcgis 原生模式
+  console.warn(
+    '[arcgis-mvt-renderer] engine="auto" 自动检测：未找到 maplibre-gl 或 mapbox-gl 依赖，已自动安全降级至 ArcGIS 原生模式。\n' +
+    '提示：ArcGIS 原生模式对第三方逆时针 (CCW) 多边形面瓦片存在丢弃缺陷，推荐安装 maplibre-gl: `pnpm add maplibre-gl`'
+  )
+  return { engine: 'arcgis' }
 }
 
 /**
@@ -78,6 +155,7 @@ export async function acquireSharedEngine(
   options?: SharedEngineOptions
 ): Promise<{
   map: any
+  engine: 'maplibre' | 'mapbox'
   release: () => void
 }> {
   if (!view) {
@@ -88,6 +166,14 @@ export async function acquireSharedEngine(
     await view.when()
   }
 
+  const detected = await detectAvailableEngine(options?.engine || 'auto', options)
+  if (detected.engine === 'arcgis' || !detected.lib) {
+    throw new Error('[arcgis-mvt-renderer] 当前处于 ArcGIS 原生模式，无需初始化 WebGL 引擎画布')
+  }
+
+  const engineType = detected.engine
+  const engineLib = detected.lib
+
   let entry = sharedEnginePool.get(view)
 
   if (entry) {
@@ -95,6 +181,7 @@ export async function acquireSharedEngine(
     if (entry.isLoaded) {
       return {
         map: entry.map,
+        engine: entry.engineType,
         release: createRelease(view, entry),
       }
     } else {
@@ -102,15 +189,13 @@ export async function acquireSharedEngine(
         entry!.loadCallbacks.push((m) => {
           resolve({
             map: m,
+            engine: entry!.engineType,
             release: createRelease(view, entry!),
           })
         })
       })
     }
   }
-
-  const engineType = options?.engine === 'mapbox' ? 'mapbox' : 'maplibre'
-  const engineLib = await resolveEngineLib(options)
 
   if (options?.accessToken && engineLib) {
     engineLib.accessToken = options.accessToken
@@ -226,6 +311,7 @@ export async function acquireSharedEngine(
 
       resolve({
         map,
+        engine: engineType,
         release: createRelease(view, currentEntry),
       })
     })

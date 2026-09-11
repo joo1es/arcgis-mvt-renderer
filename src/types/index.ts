@@ -2,16 +2,18 @@
 import type { InjectionKey, Ref, ShallowRef } from 'vue'
 import type { Map as MapLibreMap, MapOptions } from 'maplibre-gl'
 
-export type MvtEngineType = 'maplibre' | 'mapbox' | 'arcgis'
+export type MvtEngineType = 'auto' | 'maplibre' | 'mapbox' | 'arcgis'
 
 export interface MvtRendererProps {
   /**
    * 渲染引擎模式
-   * - 'maplibre' (默认值): 使用 MapLibre GL 矢量瓦片渲染管线，天然解决多边形绕向 (Winding Order) 缺失引起的面填充空白问题；多图层自动共享 1 个 WebGL 上下文。
-   * - 'mapbox': 使用 Mapbox GL JS 矢量瓦片渲染管线 (需提供 accessToken 或通过 MapboxOptions 传入)；多图层同样自动共享 1 个 WebGL 上下文。
-   * - 'arcgis': 使用 ArcGIS 官方原生 VectorTileLayer 渲染。
+   * - 'auto' (默认值): 智能自动探测当前环境中安装的引擎依赖。
+   *   优先级：若传入 accessToken 优先探测 mapbox-gl；默认优先探测 maplibre-gl；若安装了 mapbox-gl 则使用 mapbox-gl；若均未安装或处于 3D SceneView 则安全降级至 arcgis 原生模式。
+   * - 'maplibre': 强制使用 MapLibre GL 矢量瓦片渲染管线，天然解决多边形绕向 (Winding Order) 缺失引起的面填充空白问题；多图层自动共享 1 个 WebGL 上下文。
+   * - 'mapbox': 强制使用 Mapbox GL JS 矢量瓦片渲染管线 (需提供 accessToken 或通过 MapboxOptions 传入)；多图层同样自动共享 1 个 WebGL 上下文。
+   * - 'arcgis': 强制使用 ArcGIS 官方原生 VectorTileLayer 渲染。
    * 注意：3D SceneView 模式下将自适应降级使用 'arcgis' 原生模式进行球面贴地渲染。
-   * @default 'maplibre'
+   * @default 'auto'
    */
   engine?: MvtEngineType
 

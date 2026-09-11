@@ -6,7 +6,7 @@ import { useArcGISView } from '../composables/useMvtContext'
 import type { MvtRendererProps } from '../types'
 
 const props = withDefaults(defineProps<MvtRendererProps>(), {
-  engine: 'maplibre',
+  engine: 'auto',
   visible: true,
 })
 
@@ -92,6 +92,7 @@ defineExpose({
   getMapInstance: () => layerInstance.value?.getMapInstance(),
   getArcgisLayer: () => layerInstance.value?.getArcgisLayer(),
   isMapLibreMode: computed(() => layerInstance.value?.isMapMode ?? true),
+  actualEngine: computed(() => layerInstance.value?.actualEngine ?? 'arcgis'),
   resolvedStyleObject: computed(() => layerInstance.value?.getResolvedStyle() ?? null),
 })
 </script>

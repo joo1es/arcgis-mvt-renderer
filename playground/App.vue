@@ -42,6 +42,7 @@ const i18n = {
     dim3dNotice: '💡 3D 数字地球需要将矢量瓦片贴合于三维曲面，由 ArcGIS SceneView 原生 VectorTileLayer 贴地渲染；MapLibre 属于 2D 平面 WebGL 引擎。',
     tiltHint: '操作提示：按住鼠标右键或按住 Ctrl+鼠标拖拽，可自由倾斜、俯仰和旋转 3D 地球视角。',
     engineTitle: '渲染引擎模式',
+    autoMode: '⚡ 自动探测 (Auto)',
     maplibreMode: '🟢 MapLibre 模式',
     arcgisMode: '🔵 ArcGIS 原生模式',
     maplibreDisabledIn3D: '3D SceneView 模式下需使用 ArcGIS 原生模式贴地渲染',
@@ -78,6 +79,7 @@ const i18n = {
     dim3dNotice: '💡 3D Globe requires spherical draping provided natively by ArcGIS SceneView VectorTileLayer; MapLibre GL is a 2D planar WebGL engine.',
     tiltHint: 'Controls: Right-click drag or Ctrl+drag to tilt and rotate the 3D globe.',
     engineTitle: 'Rendering Engine',
+    autoMode: '⚡ Auto Detection',
     maplibreMode: '🟢 MapLibre Mode',
     arcgisMode: '🔵 ArcGIS Native Mode',
     maplibreDisabledIn3D: 'MapLibre 2D canvas is not available in 3D SceneView. Native mode is active.',
@@ -122,7 +124,7 @@ const graphicsLayer = shallowRef<GraphicsLayer | null>(null)
 
 // 状态管理
 const activePresetIndex = ref(0)
-const currentMode = ref<'maplibre' | 'arcgis'>('maplibre')
+const currentMode = ref<'auto' | 'maplibre' | 'mapbox' | 'arcgis'>('auto')
 const customTileUrl = ref('')
 const fillColor = ref('#409EFF')
 const fillOpacity = ref(0.7)
@@ -415,10 +417,7 @@ const setDimension = async (dim: '2d' | '3d') => {
 }
 
 // 切换引擎模式
-const setEngineMode = (mode: 'maplibre' | 'arcgis') => {
-  if (viewDimension.value === '3d' && mode === 'maplibre') {
-    return
-  }
+const setEngineMode = (mode: 'auto' | 'maplibre' | 'mapbox' | 'arcgis') => {
   currentMode.value = mode
 }
 
@@ -604,6 +603,12 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
         <div class="form-group">
           <label class="form-label">{{ t.engineTitle }}</label>
           <div class="mode-switch">
+            <button
+              :class="['btn-mode', { active: currentMode === 'auto' }]"
+              @click="setEngineMode('auto')"
+            >
+              {{ t.autoMode }}
+            </button>
             <button
               :class="['btn-mode', { active: currentMode === 'maplibre' }]"
               :disabled="viewDimension === '3d'"

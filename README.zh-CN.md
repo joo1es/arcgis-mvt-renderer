@@ -279,7 +279,7 @@ onMounted(() => {
 
 | 属性名 / 配置项 | 类型 | 默认值 | 说明 |
 | :--- | :--- | :--- | :--- |
-| `engine` | `'maplibre' \| 'mapbox' \| 'arcgis'` | `'maplibre'` | 渲染引擎模式。挂载在同一视图下的多个组件自动共享 1 个单例 WebGL 上下文；在 3D `SceneView` 中自动回退至 `'arcgis'`。 |
+| `engine` | `'auto' \| 'maplibre' \| 'mapbox' \| 'arcgis'` | `'auto'` | 渲染引擎模式。默认为 `'auto'`（自动智能检测当前环境安装的依赖：优先使用 `maplibre-gl`；若提供 token 或安装了 `mapbox-gl` 则使用 `mapbox-gl`；若均未安装或处于 3D `SceneView` 则安全降级至 ArcGIS 原生模式）。 |
 | `accessToken` | `string` | `undefined` | Mapbox Access Token（当 `engine="mapbox"` 时使用）。 |
 | `engineInstance` | `any` | `undefined` | 可选，直接传入外部引入的 `maplibregl` 或 `mapboxgl` 库模块实例。 |
 | `style` | `string \| Record<string, any>` | `undefined` | 标准 Mapbox/ArcGIS Style Spec v8 样式对象、JSON 字符串，或远程 `style.json` 访问地址。与 `url` 属性二选一。 |

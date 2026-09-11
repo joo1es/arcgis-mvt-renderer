@@ -45,7 +45,19 @@
   "peerDependencies": {
     "@arcgis/core": ">=4.20.0",
     "maplibre-gl": ">=3.0.0",
-    "vue": "^3.3.0"
+    "mapbox-gl": ">=2.0.0",
+    "vue": ">=3.3.0"
+  },
+  "peerDependenciesMeta": {
+    "vue": {
+      "optional": true
+    },
+    "maplibre-gl": {
+      "optional": true
+    },
+    "mapbox-gl": {
+      "optional": true
+    }
   },
 
   "devDependencies": {

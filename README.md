@@ -279,7 +279,7 @@ Both the pure JS class and Vue component share identical property options:
 
 | Prop / Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `engine` | `'maplibre' \| 'mapbox' \| 'arcgis'` | `'maplibre'` | Rendering engine mode. Multiple instances on the same view automatically share a single WebGL context. Auto-falls back to `'arcgis'` in 3D `SceneView`. |
+| `engine` | `'auto' \| 'maplibre' \| 'mapbox' \| 'arcgis'` | `'auto'` | Rendering engine mode. Defaults to `'auto'` (automatically detects whether `maplibre-gl` or `mapbox-gl` is installed in the project and initializes the appropriate WebGL engine; safely falls back to native ArcGIS mode if neither is installed or in 3D `SceneView`). |
 | `accessToken` | `string` | `undefined` | Mapbox Access Token (when `engine="mapbox"` is used). |
 | `engineInstance` | `any` | `undefined` | Optional direct reference to `maplibregl` or `mapboxgl` library module. |
 | `style` | `string \| Record<string, any>` | `undefined` | Standard Mapbox/ArcGIS Style Spec v8 object, JSON string, or remote `style.json` URL. Mutually interchangeable with `url`. |

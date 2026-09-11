@@ -28,6 +28,7 @@ export default defineConfig({
       external: [
         'vue',
         'maplibre-gl',
+        'mapbox-gl',
         '@arcgis/core',
         /^@arcgis\/core\/.*/,
       ],
@@ -36,6 +37,7 @@ export default defineConfig({
         globals: {
           vue: 'Vue',
           'maplibre-gl': 'maplibregl',
+          'mapbox-gl': 'mapboxgl',
         },
       },
     },

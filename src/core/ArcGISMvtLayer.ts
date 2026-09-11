@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import VectorTileLayer from '@arcgis/core/layers/VectorTileLayer'
-import { acquireSharedEngine } from '../composables/useSharedMaplibre'
+import { acquireSharedEngine, detectAvailableEngine } from '../composables/useSharedMaplibre'
 import type { ArcGISMvtLayerOptions, MvtEngineType } from '../types'
 
 /**
@@ -12,6 +12,7 @@ export class ArcGISMvtLayer {
   public view: any
   public options: ArcGISMvtLayerOptions
   public engine: MvtEngineType
+  public actualEngine: 'maplibre' | 'mapbox' | 'arcgis' = 'arcgis'
 
   private activeMapInstance: any = null
   private releaseSharedEngine: (() => void) | null = null
@@ -29,27 +30,23 @@ export class ArcGISMvtLayer {
 
     this.view = options.view
     this.options = { ...options }
-    this.engine = this.resolveEffectiveEngine(options.engine)
+    this.engine = options.engine || 'auto'
 
     this.init()
-  }
-
-  /**
-   * 判断实际生效的渲染引擎
-   * 若为 3D SceneView，自动降级为 ArcGIS 原生模式贴地渲染
-   */
-  private resolveEffectiveEngine(engine?: MvtEngineType): MvtEngineType {
-    if (this.view && this.view.type === '3d') {
-      return 'arcgis'
-    }
-    return engine || 'maplibre'
   }
 
   /**
    * 是否处于 MapLibre / Mapbox 渲染模式
    */
   public get isMapMode(): boolean {
-    return this.engine === 'maplibre' || this.engine === 'mapbox'
+    return this.actualEngine === 'maplibre' || this.actualEngine === 'mapbox'
+  }
+
+  /**
+   * 获取当前实际生效的引擎类型 ('maplibre' | 'mapbox' | 'arcgis')
+   */
+  public getActualEngine(): 'maplibre' | 'mapbox' | 'arcgis' {
+    return this.actualEngine
   }
 
   /**
@@ -84,16 +81,35 @@ export class ArcGISMvtLayer {
     }
     if (this.isDestroyed) return
 
-    // 1. 解析样式对象
+    // 1. 自动探测并确定实际生效引擎
+    await this.resolveActualEngine()
+
+    // 2. 解析样式对象
     await this.resolveStyleInput()
 
-    // 2. 根据引擎模式执行挂载
+    // 3. 根据引擎模式执行挂载
     if (this.isMapMode) {
       await this.bindSharedEngine()
       this.applyMapLayers()
     } else {
       await this.syncArcgisLayer()
     }
+  }
+
+  /**
+   * 探测并解析实际运行的引擎
+   */
+  private async resolveActualEngine(): Promise<void> {
+    if (this.view && this.view.type === '3d') {
+      this.actualEngine = 'arcgis'
+      return
+    }
+
+    const detected = await detectAvailableEngine(this.engine, {
+      accessToken: this.options.accessToken,
+      engineInstance: this.options.engineInstance,
+    })
+    this.actualEngine = detected.engine
   }
 
   /**
@@ -149,7 +165,7 @@ export class ArcGISMvtLayer {
 
     try {
       const { map, release } = await acquireSharedEngine(this.view, {
-        engine: this.engine,
+        engine: this.actualEngine,
         accessToken: this.options.accessToken,
         engineInstance: this.options.engineInstance,
       })
@@ -209,6 +225,7 @@ export class ArcGISMvtLayer {
             if (newLayer.type === 'fill') newLayer.paint['fill-opacity'] = this.options.opacity
             else if (newLayer.type === 'line') newLayer.paint['line-opacity'] = this.options.opacity
             else if (newLayer.type === 'circle') newLayer.paint['circle-opacity'] = this.options.opacity
+            else if (newLayer.type === 'raster') newLayer.paint['raster-opacity'] = this.options.opacity
           }
 
           const validBeforeId =
@@ -374,14 +391,20 @@ export class ArcGISMvtLayer {
   }
 
   /**
-   * 动态切换渲染引擎 ('maplibre' | 'mapbox' | 'arcgis')
+   * 动态切换渲染引擎 ('auto' | 'maplibre' | 'mapbox' | 'arcgis')
    */
   public async setEngine(engine: MvtEngineType): Promise<void> {
-    const newEffective = this.resolveEffectiveEngine(engine)
-    if (this.engine === newEffective) return
+    if (this.engine === engine) return
+    this.engine = engine
+    this.options.engine = engine
 
-    // 清理前一个引擎的图层
-    if (this.isMapMode) {
+    const prevActual = this.actualEngine
+    await this.resolveActualEngine()
+
+    if (prevActual === this.actualEngine) return
+
+    // 清理前一个引擎的图层与单例绑定
+    if (prevActual === 'maplibre' || prevActual === 'mapbox') {
       this.removeMapLayers()
       if (this.releaseSharedEngine) {
         this.releaseSharedEngine()
@@ -391,9 +414,6 @@ export class ArcGISMvtLayer {
     } else {
       this.removeArcgisLayer()
     }
-
-    this.engine = newEffective
-    this.options.engine = engine
 
     if (this.isMapMode) {
       await this.bindSharedEngine()
