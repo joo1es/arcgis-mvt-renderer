@@ -226,6 +226,16 @@ onMounted(() => {
 
 ---
 
+## 🌐 坐标系与空间参考支持 (Spatial Reference Guide)
+
+| 坐标系体系 | 典型代表 | 推荐模式 | 说明 |
+| :--- | :--- | :--- | :--- |
+| **Web 墨卡托** | `EPSG:3857` / `WKID:102100` / 天地图墨卡托 (`_w`) | **MapLibre 模式** 或 **ArcGIS 原生模式** | **完全支持**。MapLibre GL 规范原生基于 Web 墨卡托四叉树构建，视口同步及几何形状 100% 严密贴合。 |
+| **地理经纬度** | `CGCS2000 (WKID:4490)` / `WGS84 (EPSG:4326)` / 天地图经纬度 (`_c`) | **ArcGIS 原生模式** (`<MvtRenderer>`) | **ArcGIS 原生模式完全支持**。ArcGIS `VectorTileLayer` 原生支持 4490/4326 切片方案。若在 4490 下使用 MapLibre，因其底层缺乏等经纬投影瓦片管道，会发生纬度拉伸形变。 |
+| **高斯/局部投影** | 城市 3 度带高斯克吕格投影 / 地方独立坐标系 | **ArcGIS 原生模式** (`<MvtRenderer>`) | **ArcGIS 原生模式完全支持**。只要矢量切片发布了对应投影的 Tiling Scheme，ArcGIS 原生模式即可自动读取并精确渲染。 |
+
+---
+
 ## 📖 API 参数详解
 
 ### `<MvtRenderer>`

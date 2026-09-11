@@ -226,6 +226,16 @@ onMounted(() => {
 
 ---
 
+## 🌐 Spatial Reference & Coordinate Systems
+
+| Coordinate System | Examples | Recommended Mode | Description |
+| :--- | :--- | :--- | :--- |
+| **Web Mercator** | `EPSG:3857` / `WKID:102100` / Tianditu Mercator (`_w`) | **MapLibre Mode** or **ArcGIS Native Mode** | **Fully supported**. MapLibre GL is natively built on the Web Mercator quadtree tiling scheme with 100% viewpoint alignment. |
+| **Geographic (Lat/Long)** | `CGCS2000 (WKID:4490)` / `WGS84 (EPSG:4326)` / Tianditu Geo (`_c`) | **ArcGIS Native Mode** (`<MvtRenderer>`) | **Fully supported via Native Mode**. ArcGIS `VectorTileLayer` natively handles 4490/4326 tiling schemes. MapLibre lacks equirectangular plate-carrée tiling pipelines and will distort latitudes under 4490. |
+| **Projected / Local Grids** | Gauss-Krüger 3-degree zones / Local city coordinate systems | **ArcGIS Native Mode** (`<MvtRenderer>`) | **Fully supported via Native Mode**. As long as the vector tiles publish a matching tiling scheme, native ArcGIS renders them accurately. |
+
+---
+
 ## 📖 API Reference
 
 ### `<MvtRenderer>`

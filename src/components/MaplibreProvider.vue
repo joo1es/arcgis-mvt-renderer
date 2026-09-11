@@ -99,6 +99,20 @@ onMounted(async () => {
     await view.when()
   }
 
+  // 检测坐标系：MapLibre GL 属于 Web 墨卡托投影体系
+  if (
+    view.spatialReference &&
+    !view.spatialReference.isWebMercator &&
+    view.spatialReference.wkid !== 3857 &&
+    view.spatialReference.wkid !== 102100
+  ) {
+    console.warn(
+      `[MaplibreProvider] 检测到当前 ArcGIS 视图坐标系为 WKID:${view.spatialReference.wkid}（非 Web 墨卡托 EPSG:3857）。\n` +
+      `MapLibre GL 核心渲染管线严格基于 Web 墨卡托体系构建，在等经纬度投影（如 CGCS2000 WKID:4490 / WGS84 WKID:4326）或局部投影下会产生纬度拉伸错位。\n` +
+      `👉 建议：非 3857 坐标系请直接使用 <MvtRenderer>（不包裹 MaplibreProvider），ArcGIS 原生模式完全支持任意自定义投影方案。`
+    )
+  }
+
   // 初始化 MapLibre GL 实例
   map.value = new maplibregl.Map({
     container: mapRef.value,
