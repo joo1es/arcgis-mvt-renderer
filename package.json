@@ -1,7 +1,7 @@
 {
   "name": "arcgis-mvt-renderer",
-  "version": "0.1.0",
-  "description": "Seamless MVT (Mapbox Vector Tile) rendering integration between ArcGIS Maps SDK and MapLibre GL for Vue 3",
+  "version": "0.2.0",
+  "description": "Seamless MVT (Mapbox Vector Tile) rendering integration between ArcGIS Maps SDK and MapLibre/Mapbox GL. Framework-agnostic pure JS/TS class with optional Vue 3 components.",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
