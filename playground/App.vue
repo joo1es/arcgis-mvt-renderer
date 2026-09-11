@@ -135,6 +135,17 @@ const mvtLayerPosition = ref<'middle' | 'top'>('middle') // middle: 夹在底图
 const showTopGraphics = ref(true)
 const maplibreSandwichEnabled = ref(true) // MapLibre 模式下是否启用三层夹心饼干架构
 
+// 当前生效引擎是否为 MapLibre / Mapbox（auto 档在 2D 下默认为 MapLibre）
+const isMapEngineActive = computed(() => {
+  if (viewDimension.value === '3d') return false
+  return currentMode.value !== 'arcgis'
+})
+
+const isArcgisActive = computed(() => {
+  if (viewDimension.value === '3d') return true
+  return currentMode.value === 'arcgis'
+})
+
 // 当前视口监控
 const centerInfo = ref('105.0000, 35.0000')
 const zoomInfo = ref('3.00')
@@ -457,7 +468,7 @@ const updateLayerPlacement = () => {
 
   if (!showTopGraphics.value) return
 
-  if (currentMode.value === 'arcgis') {
+  if (isArcgisActive.value) {
     if (mvtLayerPosition.value === 'middle') {
       // 夹心层：标绘置于顶层 (在 MVT 矢量面之上)
       mView.map.add(gLayer)
@@ -480,7 +491,7 @@ const updateLayerPlacement = () => {
   }
 }
 
-watch([currentMode, mvtLayerPosition, showTopGraphics, maplibreSandwichEnabled], () => {
+watch([currentMode, isMapEngineActive, mvtLayerPosition, showTopGraphics, maplibreSandwichEnabled], () => {
   updateLayerPlacement()
 })
 
@@ -533,7 +544,7 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
       ref="topMapRef"
       class="map-view-surface z-top"
       :style="{
-        visibility: currentMode === 'maplibre' && maplibreSandwichEnabled && mvtLayerPosition === 'middle' ? 'visible' : 'hidden'
+        visibility: isMapEngineActive && maplibreSandwichEnabled && mvtLayerPosition === 'middle' ? 'visible' : 'hidden'
       }"
     />
 
@@ -638,7 +649,7 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
             <div
               :class="[
                 'stack-item stack-top',
-                { 'covered-blur': mvtLayerPosition === 'top' || (currentMode === 'maplibre' && !maplibreSandwichEnabled && viewDimension === '2d') }
+                { 'covered-blur': mvtLayerPosition === 'top' || (isMapEngineActive && !maplibreSandwichEnabled && viewDimension === '2d') }
               ]"
             >
               <div class="item-left">
@@ -646,7 +657,7 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
                 <strong>{{ t.topLayer }}</strong>
               </div>
               <span class="badge-index">
-                {{ currentMode === 'arcgis' ? (mvtLayerPosition === 'middle' ? 'Index 1' : 'Index 0') : 'Index 2' }}
+                {{ isArcgisActive ? (mvtLayerPosition === 'middle' ? 'Index 1' : 'Index 0') : 'Index 2' }}
               </span>
             </div>
 
@@ -656,7 +667,7 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
                 <strong>{{ t.middleLayer }}</strong>
               </div>
               <span class="badge-index">
-                {{ viewDimension === '3d' ? (mvtLayerPosition === 'middle' ? 'Index 0' : 'Index 1') : (currentMode === 'arcgis' ? `Index ${calculatedArcgisIndex}` : 'Sandwich') }}
+                {{ viewDimension === '3d' ? (mvtLayerPosition === 'middle' ? 'Index 0' : 'Index 1') : (isArcgisActive ? `Index ${calculatedArcgisIndex}` : 'Sandwich') }}
               </span>
             </div>
 
@@ -665,7 +676,7 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
                 <span class="dot gray-dot"></span>
                 <strong>{{ t.bottomLayer }}</strong>
               </div>
-              <span class="badge-index">{{ currentMode === 'arcgis' ? 'Basemap' : 'Index 0' }}</span>
+              <span class="badge-index">{{ isArcgisActive ? 'Basemap' : 'Index 0' }}</span>
             </div>
           </div>
 
@@ -686,7 +697,7 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
           </div>
 
           <!-- MapLibre 模式特有：三层夹心饼干架构开关 -->
-          <div v-if="viewDimension === '2d' && currentMode === 'maplibre'" class="sandwich-toggle-box">
+          <div v-if="viewDimension === '2d' && isMapEngineActive" class="sandwich-toggle-box">
             <div class="toggle-row">
               <span class="toggle-label">{{ t.sandwichToggle }}</span>
               <input
