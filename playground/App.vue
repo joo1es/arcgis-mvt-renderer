@@ -216,6 +216,10 @@ onMounted(async () => {
     },
   })
 
+  // 必须等待主地图就绪，获取真实的 spatialReference 和初始 viewpoint
+  await view.when()
+  mainView.value = view
+
   // 关键：全面使用 reactiveUtils.watch 代替已弃用的 view.watch()，避免 4.32+ 废弃警告
   reactiveUtils.watch(
     () => [view.center?.longitude, view.center?.latitude, view.zoom],
@@ -226,10 +230,9 @@ onMounted(async () => {
       if (typeof z === 'number') {
         zoomInfo.value = z.toFixed(2)
       }
-    }
+    },
+    { initial: true }
   )
-
-  mainView.value = view
 
   // 2. 创建标绘图层
   const gLayer = new GraphicsLayer({
@@ -237,11 +240,13 @@ onMounted(async () => {
   })
   graphicsLayer.value = gLayer
 
-  // 3. 创建顶层透明 MapView (用于 MapLibre 模式下的三层夹心饼干架构)
+  // 3. 创建顶层透明 MapView (必须完全继承主地图的 spatialReference 与初始 viewpoint)
   const topMap = new Map()
   const tView = new MapView({
     container: topMapRef.value,
     map: topMap,
+    spatialReference: view.spatialReference,
+    viewpoint: view.viewpoint ? view.viewpoint.clone() : undefined,
     alphaCompositingEnabled: true,
     ui: { components: [] },
     constraints: {
@@ -253,16 +258,23 @@ onMounted(async () => {
     tView.container.style.pointerEvents = 'none'
   }
 
+  await tView.when()
   topView.value = tView
 
-  // 视角同步：主视图移动时，顶层透明视图精准跟随
+  // 确保初始 viewpoint 绝对对齐
+  if (view.viewpoint) {
+    tView.viewpoint = view.viewpoint.clone()
+  }
+
+  // 视角强同步：通过 viewpoint 整体克隆同步，保证平移、缩放、旋转完全一致
   reactiveUtils.watch(
-    () => [view.center?.longitude, view.center?.latitude, view.resolution, view.rotation],
-    () => {
-      if (!tView.ready || !view.ready || !view.center || !view.resolution) return
-      tView.viewpoint = view.viewpoint
+    () => view.viewpoint,
+    (vp) => {
+      if (tView.ready && vp) {
+        tView.viewpoint = vp.clone()
+      }
     },
-    { sync: true }
+    { initial: true, sync: true }
   )
 
   updateLayerPlacement()
