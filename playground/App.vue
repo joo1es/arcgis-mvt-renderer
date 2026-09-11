@@ -519,20 +519,11 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
     <!-- ================= 三层三维视口容器 ================= -->
     <div ref="mainMapRef" class="map-view-surface z-bottom" />
 
-    <MaplibreProvider
-      v-if="viewDimension === '2d' && currentMode === 'maplibre' && mainView"
-      :view="mainView"
-    >
-      <MvtRenderer
-        :style="activeStyle"
-        :tile-url="customTileUrl || undefined"
-        :opacity="fillOpacity"
-      />
-    </MaplibreProvider>
-
+    <!-- 核心：单组件支持 engine 动态切换，自动共享单个 WebGL 上下文 -->
     <MvtRenderer
-      v-else-if="(currentMode === 'arcgis' || viewDimension === '3d') && mainView"
+      v-if="mainView"
       :view="mainView"
+      :engine="currentMode"
       :style="activeStyle"
       :tile-url="customTileUrl || undefined"
       :index="calculatedArcgisIndex"

@@ -17,6 +17,8 @@
   <a href="./LICENSE"><img src="https://img.shields.io/npm/l/arcgis-mvt-renderer.svg" alt="license"></a>
 </p>
 
+> 🚀 **Live Interactive Demo**: [https://joo1es.github.io/arcgis-mvt-renderer/](https://joo1es.github.io/arcgis-mvt-renderer/)
+
 ---
 
 ## 💡 Why `arcgis-mvt-renderer`?
@@ -30,19 +32,20 @@ When working with third-party or custom MVT (Mapbox Vector Tile) services in **A
 
 `arcgis-mvt-renderer` bridges both worlds:
 1. **Pass standard `:style`**: Accepts native Mapbox Style Spec v8 objects or remote `style.json` URLs.
-2. **Dual-Mode Rendering**: Automatically syncs and renders with MapLibre GL when wrapped inside `<MaplibreProvider>`, and falls back to native `@arcgis/core/layers/VectorTileLayer` when running standalone.
-3. **Completely Decoupled**: Zero proprietary wrapper dependencies. Native support for `@arcgis/core`, `@vuesri/core`, or vanilla Vue 3 projects.
+2. **Zero Nesting & Shared WebGL Context**: Use `<MvtRenderer>` directly. Multiple instances on the same ArcGIS view automatically share **a single MapLibre instance and 1 WebGL canvas**, completely eliminating WebGL context limit issues!
+3. **Dual-Mode Rendering (`engine`)**: Defaults to `engine="maplibre"` for robust polygon rendering; switch to `engine="arcgis"` anytime for native mode or 3D digital globe (`SceneView`) spherical draping.
+4. **Completely Decoupled**: Zero proprietary wrapper dependencies. Native support for `@arcgis/core`, `@vuesri/core`, or vanilla Vue 3 projects.
 
 ---
 
 ## 🌟 Features
 
 - 🎯 **Standard `:style` Prop**: Pass standard Mapbox Style Spec v8 JSON objects or remote `style.json` URLs without custom transformations.
-- ⚡ **Dual-Mode Architecture**:
-  - **MapLibre Mode**: Fixes polygon fill rendering issues using high-performance MapLibre GL, automatically synced with ArcGIS camera viewpoint.
-  - **ArcGIS Native Mode**: Falls back to native `VectorTileLayer` when running without a provider.
+- ⚡ **Single-Component Ergonomics (`engine`)**:
+  - `engine="maplibre"` (Default): Fixes polygon fill rendering issues using high-performance MapLibre GL, with automatic camera synchronization and shared WebGL context.
+  - `engine="arcgis"`: Uses native `VectorTileLayer` for standard ArcGIS layers or 3D `SceneView` spherical draping.
+- 🛡️ **Singleton WebGL Context Pool**: Multiple `<MvtRenderer>` components on the same view share **1 canvas and 1 WebGL context** through automatic reference counting.
 - 🔄 **Real-Time Camera Synchronization**: Coordinates `center`, `zoom`, `resolution`, and `bearing` between ArcGIS MapView and MapLibre.
-- 🛡️ **Scope Isolation**: Automatically assigns unique ID prefixes to added Sources and Layers to prevent namespace collisions when multiple renderer instances run simultaneously.
 - 🧩 **Zero Framework Lock-in**: Automatically discovers ArcGIS MapView from props, `inject('view')`, or `@vuesri/core`, without coupling to any specific UI library.
 - 📦 **Full TypeScript Support**: Comprehensive `.d.ts` declarations included.
 
@@ -87,20 +90,25 @@ app.mount('#app')
 
 ### 2. Usage Examples
 
-#### Mode A: With `MaplibreProvider` (Recommended — Fixes Polygon Fill Issues)
+#### Mode A: Single Component (Recommended — Default `engine="maplibre"`)
 
-Wrap `<MvtRenderer>` with `<MaplibreProvider>`. The provider creates an overlay and keeps its viewpoint in sync with the ArcGIS MapView.
+Simply pass `:view` and `:style`. Multiple components on the same view automatically share a single WebGL canvas and context:
 
 ```vue
 <template>
   <div ref="mapContainer" class="map-view">
-    <!-- MaplibreProvider keeps MapLibre camera synchronized with arcgisView -->
-    <MaplibreProvider :view="arcgisView">
-      <MvtRenderer
-        :style="vectorTileStyle"
-        tile-url="https://your-server.com/v1/mvt/{z}/{x}/{y}.pbf"
-      />
-    </MaplibreProvider>
+    <!-- Zero nesting required! Automatically renders via MapLibre and shares 1 WebGL context -->
+    <MvtRenderer
+      :view="arcgisView"
+      :style="vectorTileStyle"
+      tile-url="https://your-server.com/v1/mvt/{z}/{x}/{y}.pbf"
+    />
+
+    <!-- Add as many layers as you want; all share the single WebGL context -->
+    <MvtRenderer
+      :view="arcgisView"
+      :style="buildingStyle"
+    />
   </div>
 </template>
 
@@ -108,7 +116,7 @@ Wrap `<MvtRenderer>` with `<MaplibreProvider>`. The provider creates an overlay 
 import { ref, onMounted } from 'vue'
 import MapView from '@arcgis/core/views/MapView'
 import Map from '@arcgis/core/Map'
-import { MaplibreProvider, MvtRenderer } from 'arcgis-mvt-renderer'
+import { MvtRenderer } from 'arcgis-mvt-renderer'
 
 const mapContainer = ref<HTMLDivElement>()
 const arcgisView = ref<MapView>()
@@ -141,16 +149,6 @@ const vectorTileStyle = ref({
         'fill-color': '#409EFF',
         'fill-opacity': 0.7
       }
-    },
-    {
-      id: 'my-polygon-outline',
-      type: 'line',
-      source: 'my-source',
-      'source-layer': 'my_layer_name',
-      paint: {
-        'line-color': '#1E3A8A',
-        'line-width': 1.5
-      }
     }
   ]
 })
@@ -167,15 +165,13 @@ const vectorTileStyle = ref({
 
 #### Mode B: Inside `@vuesri/core` (Zero Configuration)
 
-If you are using `@vuesri/core`, `<MaplibreProvider>` automatically discovers the parent `MapView` via `inject('view')`. You do **not** need to pass `:view`:
+If you are using `@vuesri/core`, `<MvtRenderer>` automatically discovers the parent `MapView` via `inject('view')`. You do **not** need to pass `:view`:
 
 ```vue
 <template>
   <VaMapView :default-options="mapOptions">
-    <!-- Automatically binds to VaMapView -->
-    <MaplibreProvider>
-      <MvtRenderer :style="vectorTileStyle" />
-    </MaplibreProvider>
+    <!-- Automatically binds to parent VaMapView -->
+    <MvtRenderer :style="vectorTileStyle" />
 
     <!-- Base layers and other graphics -->
     <VaTdtBasemap :type="'vec_w'" />
@@ -183,14 +179,14 @@ If you are using `@vuesri/core`, `<MaplibreProvider>` automatically discovers th
 </template>
 
 <script setup lang="ts">
-import { MaplibreProvider, MvtRenderer } from 'arcgis-mvt-renderer'
+import { MvtRenderer } from 'arcgis-mvt-renderer'
 // ...
 </script>
 ```
 
 #### Mode C: Native ArcGIS Mode & 3D Globe (`SceneView`)
 
-When used outside `<MaplibreProvider>`, or in a 3D digital globe (`SceneView`), `<MvtRenderer>` automatically mounts native `@arcgis/core/layers/VectorTileLayer`, seamlessly draping vector tiles onto the 3D spherical globe surface:
+Configure `engine="arcgis"`, or use in a 3D digital globe (`SceneView`), where `<MvtRenderer>` automatically drapes vector tiles onto the spherical 3D globe surface:
 
 ```vue
 <template>
@@ -198,6 +194,7 @@ When used outside `<MaplibreProvider>`, or in a 3D digital globe (`SceneView`), 
     <!-- Draped naturally on the 3D globe surface -->
     <MvtRenderer
       :view="sceneView"
+      engine="arcgis"
       :style="vectorTileStyle"
     />
   </div>
@@ -223,7 +220,7 @@ onMounted(() => {
 ```
 
 > **💡 Best Practice (Zoom Constraints)**:
-> In 2D `MapView` paired with `MaplibreProvider`, we recommend configuring `constraints: { minZoom: 2, maxZoom: 18, snapToZoom: false }` on the host MapView to prevent over-zooming out beyond valid Mercator projection tile scales.
+> In 2D `MapView`, we recommend configuring `constraints: { minZoom: 2, maxZoom: 18, snapToZoom: false }` on the host MapView to prevent over-zooming out beyond valid Mercator projection tile scales.
 
 ---
 
@@ -243,6 +240,7 @@ onMounted(() => {
 
 | Prop | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
+| `engine` | `'maplibre' \| 'arcgis'` | `'maplibre'` | Rendering engine mode. Multiple instances on the same view automatically share a single WebGL context. Auto-falls back to `'arcgis'` in 3D `SceneView`. |
 | `style` | `string \| Record<string, any>` | `undefined` | Standard Mapbox/ArcGIS Style Spec v8 object, JSON string, or remote `style.json` URL. Mutually interchangeable with `url`. |
 | `url` | `string` | `undefined` | Vector tile service URL or style JSON URL, **fully aligned with ArcGIS `VectorTileLayer.url`**. Supports `{z}/{x}/{y}` tile template strings. |
 | `opacity` | `number` | `1` | Layer opacity (`0 ~ 1`), **fully aligned with ArcGIS `VectorTileLayer.opacity`**. Enables smooth fading without flickering or reloading tiles. |

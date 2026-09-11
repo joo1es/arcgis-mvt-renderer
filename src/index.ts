@@ -4,6 +4,7 @@ import MvtRenderer from './components/MvtRenderer.vue'
 
 export { MaplibreProvider, MvtRenderer }
 export { provideMaplibreContext, useMaplibreContext } from './composables/useMvtContext'
+export { acquireSharedMaplibre } from './composables/useSharedMaplibre'
 export * from './types'
 
 const plugin: Plugin = {

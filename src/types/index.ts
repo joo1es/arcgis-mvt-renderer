@@ -4,6 +4,15 @@ import type { Map as MapLibreMap, MapOptions } from 'maplibre-gl'
 
 export interface MvtRendererProps {
   /**
+   * 渲染引擎模式
+   * - 'maplibre' (默认值): 使用 MapLibre GL 矢量瓦片渲染管线，天然解决多边形绕向 (Winding Order) 缺失引起的面填充空白问题；多图层自动共享 1 个 WebGL 上下文。
+   * - 'arcgis': 使用 ArcGIS 官方原生 VectorTileLayer 渲染。
+   * 注意：3D SceneView 模式下将自适应降级使用 'arcgis' 原生模式进行球面贴地渲染。
+   * @default 'maplibre'
+   */
+  engine?: 'maplibre' | 'arcgis'
+
+  /**
    * 矢量瓦片样式
    * 支持标准的 Mapbox/ArcGIS Style Spec v8 样式对象、JSON 字符串，或者远程 style.json 的 URL。
    * 也可与 url 属性互换使用。

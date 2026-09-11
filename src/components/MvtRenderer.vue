@@ -1,17 +1,36 @@
 <!-- eslint-disable @typescript-eslint/no-explicit-any -->
 <script lang="ts" setup>
-import { computed, ref, watch, onUnmounted } from 'vue'
+import { computed, ref, shallowRef, watch, onUnmounted } from 'vue'
 import VectorTileLayer from '@arcgis/core/layers/VectorTileLayer'
 import { useMaplibreContext, useArcGISView } from '../composables/useMvtContext'
+import { acquireSharedMaplibre } from '../composables/useSharedMaplibre'
 import type { MvtRendererProps } from '../types'
 
 const props = withDefaults(defineProps<MvtRendererProps>(), {
+  engine: 'maplibre',
   visible: true,
 })
 
-// 检查是否处于 MapLibreProvider 上下文
+// 解析当前环境的 ArcGIS View 实例（响应式跟随 props.view 变动）
+const arcgisView = computed(() => useArcGISView(props.view))
+
+// 检查是否处于外部显式声明的 MapLibreProvider 上下文中（提供向下兼容）
 const mapContext = useMaplibreContext()
-const isMapLibreMode = computed(() => !!mapContext?.value)
+
+// 计算当前生效的渲染引擎
+const effectiveEngine = computed(() => {
+  // 3D SceneView 模式下自动降级为 ArcGIS 原生模式球面贴地渲染
+  if (arcgisView.value && arcgisView.value.type === '3d') {
+    return 'arcgis'
+  }
+  return props.engine || 'maplibre'
+})
+
+const isMapLibreMode = computed(() => effectiveEngine.value === 'maplibre')
+
+// 活跃的 MapLibre 实例（无论来自父级 Provider 还是单例池）
+const activeMapInstance = shallowRef<any>(null)
+let releaseSharedMaplibre: (() => void) | null = null
 
 // 计算有效的切片 URL 覆盖（兼容 tileUrl 或包含 {z} 的 url 属性）
 const effectiveTileUrl = computed(() => {
@@ -60,43 +79,44 @@ watch(
           if (!res.ok) throw new Error(`HTTP ${res.status}`)
           fetchedStyle.value = await res.json()
         } catch (e) {
-          console.error('[MvtRenderer] 请求远程 style.json 失败:', e)
+          console.error(`[MvtRenderer] 请求远程矢量瓦片样式失败 (${trimmed}):`, e)
           fetchedStyle.value = null
         }
       }
     } else if (typeof newStyle === 'object') {
-      fetchedStyle.value = newStyle
+      fetchedStyle.value = JSON.parse(JSON.stringify(newStyle))
     }
   },
-  { immediate: true, deep: true }
+  { immediate: true }
 )
 
-// 计算并返回规范化的样式对象（如果配置了 tileUrl 则替换矢量瓦片请求地址）
+// 响应式解析合并最终样式配置
 const resolvedStyleObject = computed<Record<string, any> | null>(() => {
-  if (!fetchedStyle.value) return null
-  const cloned = JSON.parse(JSON.stringify(fetchedStyle.value))
+  const base = fetchedStyle.value
+  if (!base) return null
 
-  const tileSource = effectiveTileUrl.value
-  if (tileSource && cloned.sources) {
-    Object.keys(cloned.sources).forEach((key) => {
-      if (cloned.sources[key]?.type === 'vector') {
-        cloned.sources[key].tiles = [tileSource]
+  // 若提供了显式覆盖的 tileUrl，则动态注入并覆盖 style.sources 中的 tiles 配置
+  if (effectiveTileUrl.value && base.sources) {
+    const cloned = JSON.parse(JSON.stringify(base))
+    Object.keys(cloned.sources).forEach((srcKey) => {
+      const src = cloned.sources[srcKey]
+      if (src && (src.type === 'vector' || !src.type)) {
+        src.tiles = [effectiveTileUrl.value]
       }
     })
+    return cloned
   }
 
-  return cloned
+  return base
 })
 
-// ArcGIS 模式下的样式入参：
-// 若无需替换 tileUrl 且入参是 URL 字符串，可直接传递 URL 让 ArcGIS 原生加载
+// 为 ArcGIS 原生模式组装样式对象或 URL
 const arcgisStyle = computed(() => {
-  if (effectiveTileUrl.value) {
-    return resolvedStyleObject.value
-  }
-  const input = effectiveStyleInput.value
-  if (typeof input === 'string' && !input.trim().startsWith('{')) {
-    return input
+  if (typeof props.style === 'string') {
+    const trimmed = props.style.trim()
+    if (!trimmed.startsWith('{') && !effectiveTileUrl.value) {
+      return trimmed
+    }
   }
   return resolvedStyleObject.value
 })
@@ -106,7 +126,7 @@ let addedSourceIds: string[] = []
 let addedLayerIds: string[] = []
 
 const removeMapLibreLayers = () => {
-  const mapInstance = mapContext?.value
+  const mapInstance = activeMapInstance.value
   if (!mapInstance) return
 
   // 倒序注销图层
@@ -128,7 +148,7 @@ const removeMapLibreLayers = () => {
 }
 
 const addMapLibreLayers = (styleObj: Record<string, any>) => {
-  const mapInstance = mapContext?.value
+  const mapInstance = activeMapInstance.value
   if (!mapInstance || !styleObj) return
 
   const apply = () => {
@@ -195,12 +215,11 @@ const addMapLibreLayers = (styleObj: Record<string, any>) => {
 }
 
 // ------------------- 2. ArcGIS 原生模式：原生 VectorTileLayer 生命周期管理 -------------------
-const arcgisView = useArcGISView(props.view)
 let arcgisLayer: VectorTileLayer | null = null
 
 const removeArcgisLayer = () => {
-  if (arcgisLayer && arcgisView?.map) {
-    arcgisView.map.remove(arcgisLayer)
+  if (arcgisLayer && arcgisView.value?.map) {
+    arcgisView.value.map.remove(arcgisLayer)
     arcgisLayer.destroy()
     arcgisLayer = null
   }
@@ -208,13 +227,13 @@ const removeArcgisLayer = () => {
 
 const syncArcgisLayer = async () => {
   removeArcgisLayer()
-  if (!arcgisView) return
+  if (!arcgisView.value) return
   if (!arcgisStyle.value && !props.url) return
 
-  if (typeof arcgisView.when === 'function') {
-    await arcgisView.when()
+  if (typeof arcgisView.value.when === 'function') {
+    await arcgisView.value.when()
   }
-  if (!arcgisView.map) return
+  if (!arcgisView.value.map) return
 
   // 组装与 ArcGIS VectorTileLayer 构造参数完全一致的配置对象
   const layerOptions: Record<string, any> = {}
@@ -247,10 +266,10 @@ const syncArcgisLayer = async () => {
     layerOptions.customParameters = props.customParameters
   }
   if (props.blendMode) {
-    layerOptions.blendMode = props.blendMode
+    layerOptions.blendMode = props.blendMode as any
   }
   if (props.effect) {
-    layerOptions.effect = props.effect
+    layerOptions.effect = props.effect as any
   }
   if (props.listMode) {
     layerOptions.listMode = props.listMode
@@ -262,9 +281,9 @@ const syncArcgisLayer = async () => {
   arcgisLayer = new VectorTileLayer(layerOptions)
 
   if (typeof props.index === 'number') {
-    arcgisView.map.add(arcgisLayer, props.index)
+    arcgisView.value.map.add(arcgisLayer, props.index)
   } else {
-    arcgisView.map.add(arcgisLayer)
+    arcgisView.value.map.add(arcgisLayer)
   }
 }
 
@@ -277,14 +296,45 @@ const triggerArcgisSync = () => {
 }
 
 // ------------------- 响应式生命周期统一调度 -------------------
+// 管理 MapLibre 实例绑定
 watch(
-  [resolvedStyleObject, isMapLibreMode],
-  ([styleObj, isMapLibre], oldVals) => {
-    const isModeChanged = !oldVals || oldVals[1] !== isMapLibre
+  [isMapLibreMode, () => mapContext?.value, () => arcgisView.value],
+  async ([isMapLibre, parentMap, viewInstance]) => {
+    if (isMapLibre) {
+      if (parentMap) {
+        activeMapInstance.value = parentMap
+      } else if (viewInstance) {
+        try {
+          const { map, release } = await acquireSharedMaplibre(viewInstance)
+          activeMapInstance.value = map
+          releaseSharedMaplibre = release
+        } catch (e) {
+          console.error('[MvtRenderer] 绑定共享 MapLibre 实例异常:', e)
+        }
+      }
+    } else {
+      if (releaseSharedMaplibre) {
+        releaseSharedMaplibre()
+        releaseSharedMaplibre = null
+      }
+      activeMapInstance.value = null
+    }
+  },
+  { immediate: true }
+)
+
+// 监听样式与引擎模式联动
+watch(
+  [resolvedStyleObject, activeMapInstance, isMapLibreMode],
+  ([styleObj, mapInst, isMapLibre], oldVals) => {
+    const isModeChanged = !oldVals || oldVals[2] !== isMapLibre
     if (isMapLibre) {
       removeArcgisLayer()
-      if (styleObj) addMapLibreLayers(styleObj)
-      else removeMapLibreLayers()
+      if (mapInst && styleObj) {
+        addMapLibreLayers(styleObj)
+      } else if (!styleObj) {
+        removeMapLibreLayers()
+      }
     } else {
       removeMapLibreLayers()
       if (styleObj || arcgisStyle.value || props.url) {
@@ -306,8 +356,8 @@ watch(
 
     if (!isMapLibreMode.value && arcgisLayer) {
       arcgisLayer.opacity = newOpacity
-    } else if (isMapLibreMode.value && mapContext?.value) {
-      const mapInstance = mapContext.value
+    } else if (isMapLibreMode.value && activeMapInstance.value) {
+      const mapInstance = activeMapInstance.value
       addedLayerIds.forEach((layerId) => {
         const lyr = mapInstance.getLayer(layerId)
         if (lyr) {
@@ -333,8 +383,8 @@ watch(
     const isVisible = newVisible !== false
     if (!isMapLibreMode.value && arcgisLayer) {
       arcgisLayer.visible = isVisible
-    } else if (isMapLibreMode.value && mapContext?.value) {
-      const mapInstance = mapContext.value
+    } else if (isMapLibreMode.value && activeMapInstance.value) {
+      const mapInstance = activeMapInstance.value
       addedLayerIds.forEach((layerId) => {
         if (mapInstance.getLayer(layerId)) {
           mapInstance.setLayoutProperty(layerId, 'visibility', isVisible ? 'visible' : 'none')
@@ -348,8 +398,8 @@ watch(
 watch(
   () => props.index,
   (newIndex) => {
-    if (!isMapLibreMode.value && arcgisLayer && arcgisView?.map && typeof newIndex === 'number') {
-      arcgisView.map.reorder(arcgisLayer, newIndex)
+    if (!isMapLibreMode.value && arcgisLayer && arcgisView.value?.map && typeof newIndex === 'number') {
+      arcgisView.value.map.reorder(arcgisLayer, newIndex)
     }
   }
 )
@@ -399,11 +449,16 @@ onUnmounted(() => {
   if (arcgisSyncTimer) clearTimeout(arcgisSyncTimer)
   removeMapLibreLayers()
   removeArcgisLayer()
+  if (releaseSharedMaplibre) {
+    releaseSharedMaplibre()
+    releaseSharedMaplibre = null
+  }
 })
 
 defineExpose({
   isMapLibreMode,
   resolvedStyleObject,
+  activeMapInstance,
   arcgisLayer: () => arcgisLayer,
 })
 </script>

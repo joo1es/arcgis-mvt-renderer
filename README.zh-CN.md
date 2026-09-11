@@ -17,6 +17,8 @@
   <a href="./LICENSE"><img src="https://img.shields.io/npm/l/arcgis-mvt-renderer.svg" alt="license"></a>
 </p>
 
+> 🚀 **在线交互式演示 Demo**：[https://joo1es.github.io/arcgis-mvt-renderer/](https://joo1es.github.io/arcgis-mvt-renderer/)
+
 ---
 
 ## 💡 为什么需要 `arcgis-mvt-renderer`？
@@ -30,19 +32,20 @@
 
 `arcgis-mvt-renderer` 将两者的优势结合：
 1. **统一传递标准 `:style`**：直接接收原生的 Mapbox Style Spec v8 样式对象或远程 `style.json` 地址，无需自行适配转换。
-2. **双模式自适应渲染**：包裹在 `<MaplibreProvider>` 内时自动通过 MapLibre GL 高性能渲染并保持视角与 ArcGIS 实时同步；未包裹时自动降级回退至原生 `@arcgis/core/layers/VectorTileLayer`。
-3. **彻底解耦第三方框架**：不绑定任何私有 UI 封装。无论是纯原生 `@arcgis/core`、`@vuesri/core` 还是其它 Vue 3 项目均可无缝集成。
+2. **零嵌套与单例共享 WebGL 上下文**：直接使用 `<MvtRenderer>`。同一 ArcGIS View 上的多个组件实例会自动复用**同一个 MapLibre 实例与 1 个 WebGL 上下文**，彻底告别浏览器 WebGL context 数量上限超限问题！
+3. **双模式自适应渲染 (`engine`)**：默认 `engine="maplibre"`，彻底解决面要素渲染问题；随时切换 `engine="arcgis"` 原生模式或无缝贴合 3D 数字地球 (`SceneView`) 球面。
+4. **彻底解耦第三方框架**：不绑定任何私有 UI 封装。无论是纯原生 `@arcgis/core`、`@vuesri/core` 还是其它 Vue 3 项目均可无缝集成。
 
 ---
 
 ## 🌟 核心特性
 
-- 🎯 **传统标准 `:style` 入参**：直接使用标准 Mapbox Style Spec v8 样式对象或远程 `style.json` URL，无需在业务中做转译。
-- ⚡ **双模式自适应架构**：
-  - **MapLibre 模式**：利用 MapLibre GL 解决实心多边形缺失与性能瓶颈，视角与 ArcGIS 绝对同步。
-  - **ArcGIS 原生模式**：独立使用时自动回退为原生的 `VectorTileLayer`。
+- 🎯 **标准 `:style` 入参**：直接使用标准 Mapbox Style Spec v8 样式对象或远程 `style.json` URL，无需在业务中做转译。
+- ⚡ **单组件极简设计 (`engine`)**：
+  - `engine="maplibre"`（默认）：利用高性能 MapLibre GL 解决面填充缺失与性能瓶颈，视角全自动同步，且多个图层自动共享 WebGL 上下文。
+  - `engine="arcgis"`：使用原生 `VectorTileLayer`，支持标准 ArcGIS 图层或 3D `SceneView` 地球曲面贴地。
+- 🛡️ **单例 WebGL 上下文池**：挂载在同一 View 下的多个 `<MvtRenderer>` 组件自动引用计数，共享 **1 个 Canvas 画布与 1 个 WebGL 上下文**。
 - 🔄 **高精度视口同步**：实时将 ArcGIS MapView 的经纬度中心、分辨率、缩放级别与旋转角同步至 MapLibre。
-- 🛡️ **作用域安全隔离**：为动态添加的 Sources 和 Layers 自动分配前缀与唯一 ID，支持同屏多个组件实例共存而不发生 ID 碰撞。
 - 🧩 **零框架强绑定**：自动从属性、`inject('view')` 或 `@vuesri/core` 探查当前 ArcGIS MapView 实例，随插随用。
 - 📦 **开箱即用 TypeScript**：内置完整的 `.d.ts` 类型声明文件。
 
@@ -87,20 +90,25 @@ app.mount('#app')
 
 ### 2. 使用示例
 
-#### 模式一：搭配 `MaplibreProvider` 使用（推荐，解决面填充缺失与复杂切片性能问题）
+#### 模式一：单组件直接使用（推荐 —— 默认 `engine="maplibre"`）
 
-使用 `<MaplibreProvider>` 包裹 `<MvtRenderer>`。Provider 会在地图上层建立同步视口层：
+直接传递 `:view` 与 `:style`。同一视图下的多个组件会自动共享单例 WebGL 上下文与画布：
 
 ```vue
 <template>
   <div ref="mapContainer" class="map-view">
-    <!-- MaplibreProvider 会自动将自身的 MapLibre 视角与 arcgisView 保持同步 -->
-    <MaplibreProvider :view="arcgisView">
-      <MvtRenderer
-        :style="vectorTileStyle"
-        tile-url="https://your-server.com/v1/mvt/{z}/{x}/{y}.pbf"
-      />
-    </MaplibreProvider>
+    <!-- 无需任何外层 Provider 嵌套！默认由 MapLibre 高性能渲染并共享同一个 WebGL 上下文 -->
+    <MvtRenderer
+      :view="arcgisView"
+      :style="vectorTileStyle"
+      tile-url="https://your-server.com/v1/mvt/{z}/{x}/{y}.pbf"
+    />
+
+    <!-- 支持添加多个图层，全部自动合并到同一 WebGL 上下文中渲染 -->
+    <MvtRenderer
+      :view="arcgisView"
+      :style="buildingStyle"
+    />
   </div>
 </template>
 
@@ -108,7 +116,7 @@ app.mount('#app')
 import { ref, onMounted } from 'vue'
 import MapView from '@arcgis/core/views/MapView'
 import Map from '@arcgis/core/Map'
-import { MaplibreProvider, MvtRenderer } from 'arcgis-mvt-renderer'
+import { MvtRenderer } from 'arcgis-mvt-renderer'
 
 const mapContainer = ref<HTMLDivElement>()
 const arcgisView = ref<MapView>()
@@ -141,16 +149,6 @@ const vectorTileStyle = ref({
         'fill-color': '#409EFF',
         'fill-opacity': 0.7
       }
-    },
-    {
-      id: 'my-polygon-outline',
-      type: 'line',
-      source: 'my-source',
-      'source-layer': 'my_layer_name',
-      paint: {
-        'line-color': '#1E3A8A',
-        'line-width': 1.5
-      }
     }
   ]
 })
@@ -167,15 +165,13 @@ const vectorTileStyle = ref({
 
 #### 模式二：在 `@vuesri/core` 中使用（零配置自动发现）
 
-如果你在项目中使用 `@vuesri/core`，`<MaplibreProvider>` 会自动通过 `inject('view')` 寻找到父级 `MapView`，**无需显式传递 `:view`**：
+如果你在项目中使用 `@vuesri/core`，`<MvtRenderer>` 会自动通过 `inject('view')` 寻找到父级 `MapView`，**无需显式传递 `:view`**：
 
 ```vue
 <template>
   <VaMapView :default-options="mapOptions">
     <!-- 自动绑定父级 VaMapView 实例 -->
-    <MaplibreProvider>
-      <MvtRenderer :style="vectorTileStyle" />
-    </MaplibreProvider>
+    <MvtRenderer :style="vectorTileStyle" />
 
     <!-- 底图与其他业务图层 -->
     <VaTdtBasemap :type="'vec_w'" />
@@ -183,14 +179,14 @@ const vectorTileStyle = ref({
 </template>
 
 <script setup lang="ts">
-import { MaplibreProvider, MvtRenderer } from 'arcgis-mvt-renderer'
+import { MvtRenderer } from 'arcgis-mvt-renderer'
 // ...
 </script>
 ```
 
 #### 模式三：ArcGIS 原生模式与 3D 数字地球 (`SceneView`)
 
-当在 `<MaplibreProvider>` 外部独立使用，或在 3D 数字地球 (`SceneView`) 中使用时，`<MvtRenderer>` 自动挂载原生 `@arcgis/core/layers/VectorTileLayer`，将矢量瓦片自然贴合在 3D 地球曲面上：
+配置 `engine="arcgis"`，或在 3D 数字地球 (`SceneView`) 中使用时，`<MvtRenderer>` 会挂载原生 `@arcgis/core/layers/VectorTileLayer`，将矢量瓦片自然贴合在 3D 地球曲面上：
 
 ```vue
 <template>
@@ -198,6 +194,7 @@ import { MaplibreProvider, MvtRenderer } from 'arcgis-mvt-renderer'
     <!-- 3D 视角下原生贴地渲染 -->
     <MvtRenderer
       :view="sceneView"
+      engine="arcgis"
       :style="vectorTileStyle"
     />
   </div>
@@ -223,7 +220,7 @@ onMounted(() => {
 ```
 
 > **💡 提示（缩放约束建议）**：
-> 在 2D `MapView` 中搭配 `MaplibreProvider` 使用时，建议为 MapView 配置 `constraints: { minZoom: 2, maxZoom: 18, snapToZoom: false }`，以防止无限拉远至尺度极端时触发墨卡托切片截断。
+> 在 2D `MapView` 中使用时，建议为 MapView 配置 `constraints: { minZoom: 2, maxZoom: 18, snapToZoom: false }`，以防止无限拉远至尺度极端时触发墨卡托切片截断。
 
 ---
 
@@ -243,6 +240,7 @@ onMounted(() => {
 
 | 属性名 | 类型 | 默认值 | 说明 |
 | :--- | :--- | :--- | :--- |
+| `engine` | `'maplibre' \| 'arcgis'` | `'maplibre'` | 渲染引擎模式。挂载在同一视图下的多个组件自动共享 1 个单例 WebGL 上下文；在 3D `SceneView` 中自动回退至 `'arcgis'`。 |
 | `style` | `string \| Record<string, any>` | `undefined` | 标准 Mapbox/ArcGIS Style Spec v8 样式对象、JSON 字符串，或远程 `style.json` 访问地址。与 `url` 属性二选一。 |
 | `url` | `string` | `undefined` | 矢量切片服务地址或样式文件 URL，**完全对齐 ArcGIS `VectorTileLayer.url`**。支持传入包含 `{z}/{x}/{y}` 的切片模板。 |
 | `opacity` | `number` | `1` | 图层不透明度 (`0 ~ 1`)，**完全对齐 ArcGIS `VectorTileLayer.opacity`**。支持平滑渐变，无刷新闪烁。 |
