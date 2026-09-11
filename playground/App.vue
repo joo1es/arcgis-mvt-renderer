@@ -145,16 +145,16 @@ const activeStyle = computed(() => {
     base.layers.forEach((l: any) => {
       if (l.type === 'fill' && l.paint) {
         l.paint['fill-color'] = fillColor.value
-        l.paint['fill-opacity'] = fillOpacity.value
+        // 透明度交由组件 :opacity prop 统一驱动，避免拖拽滑块时重算导致图层销毁重建闪烁
       }
     })
   }
   return base
 })
 
-// 计算 ArcGIS 原生模式下的 layer index
+// 计算 ArcGIS 原生模式下的 layer index (0: 底图之上、标绘之下; 1: 标绘之上)
 const calculatedArcgisIndex = computed(() => {
-  return mvtLayerPosition.value === 'middle' ? 1 : 3
+  return mvtLayerPosition.value === 'middle' ? 0 : 1
 })
 
 // 创建演示标绘数据 (红高亮城市图钉与金色连接虚线)
@@ -224,8 +224,16 @@ const buildDemoGraphics = () => {
   return graphics
 }
 
-// 清理旧视图实例
+let centerWatchHandle: __esri.WatchHandle | null = null
+let viewpointWatchHandle: __esri.WatchHandle | null = null
+
+// 清理旧视图实例与事件监听句柄
 const cleanupViews = () => {
+  centerWatchHandle?.remove()
+  centerWatchHandle = null
+  viewpointWatchHandle?.remove()
+  viewpointWatchHandle = null
+
   if (topView.value) {
     try {
       topView.value.destroy()
@@ -270,8 +278,8 @@ const init2DViews = async () => {
   await view.when()
   mainView.value = view
 
-  // 视角监控
-  reactiveUtils.watch(
+  // 视角监控 (安全解绑)
+  centerWatchHandle = reactiveUtils.watch(
     () => [view.center?.longitude, view.center?.latitude, view.zoom],
     ([lon, lat, z]) => {
       if (typeof lon === 'number' && typeof lat === 'number') {
@@ -318,7 +326,7 @@ const init2DViews = async () => {
   }
 
   // 视角强同步
-  reactiveUtils.watch(
+  viewpointWatchHandle = reactiveUtils.watch(
     () => view.viewpoint,
     (vp) => {
       if (tView.ready && vp) {
@@ -355,15 +363,8 @@ const init3DView = async () => {
   const scene = new SceneView({
     container: mainMapRef.value,
     map: mainMap,
-    camera: {
-      position: {
-        longitude: activePreset.value.center[0],
-        latitude: activePreset.value.center[1] - 12,
-        z: 6000000,
-      },
-      tilt: 45,
-      heading: 0,
-    },
+    center: activePreset.value.center,
+    zoom: Math.max(3, activePreset.value.zoom),
     qualityProfile: 'medium',
     environment: {
       atmosphere: { quality: 'high' },
@@ -374,7 +375,18 @@ const init3DView = async () => {
   await scene.when()
   mainView.value = scene
 
-  reactiveUtils.watch(
+  // 确保三维地球居中，并给予自然的 3D 俯仰角，避免镜头朝向太空边缘
+  await scene.goTo(
+    {
+      target: [activePreset.value.center[0], activePreset.value.center[1]],
+      zoom: Math.max(3, activePreset.value.zoom),
+      tilt: 25,
+      heading: 0,
+    },
+    { animate: false }
+  )
+
+  centerWatchHandle = reactiveUtils.watch(
     () => [scene.center?.longitude, scene.center?.latitude, scene.zoom],
     ([lon, lat, z]) => {
       if (typeof lon === 'number' && typeof lat === 'number') {
@@ -424,7 +436,17 @@ const updateLayerPlacement = () => {
   if (viewDimension.value === '3d') {
     mView.map.remove(gLayer)
     if (showTopGraphics.value) {
-      mView.map.add(gLayer)
+      if (mvtLayerPosition.value === 'middle') {
+        mView.map.add(gLayer)
+        if (mView.map.layers.length > 1) {
+          mView.map.reorder(gLayer, mView.map.layers.length - 1)
+        }
+      } else {
+        mView.map.add(gLayer, 0)
+        if (mView.map.layers.length > 1) {
+          mView.map.reorder(gLayer, 0)
+        }
+      }
     }
     return
   }
@@ -438,7 +460,19 @@ const updateLayerPlacement = () => {
   if (!showTopGraphics.value) return
 
   if (currentMode.value === 'arcgis') {
-    mView.map.add(gLayer, 2)
+    if (mvtLayerPosition.value === 'middle') {
+      // 夹心层：标绘置于顶层 (在 MVT 矢量面之上)
+      mView.map.add(gLayer)
+      if (mView.map.layers.length > 1) {
+        mView.map.reorder(gLayer, mView.map.layers.length - 1)
+      }
+    } else {
+      // 覆盖测试：标绘置于底层 (在 MVT 矢量面之下)
+      mView.map.add(gLayer, 0)
+      if (mView.map.layers.length > 1) {
+        mView.map.reorder(gLayer, 0)
+      }
+    }
   } else {
     if (maplibreSandwichEnabled.value && mvtLayerPosition.value === 'middle') {
       tView.map.add(gLayer)
@@ -459,9 +493,9 @@ const handleSelectPreset = (idx: number) => {
   if (mainView.value) {
     if (viewDimension.value === '3d') {
       mainView.value.goTo({
-        target: preset.center,
+        target: [preset.center[0], preset.center[1]],
         zoom: Math.max(3, preset.zoom),
-        tilt: 45,
+        tilt: 25,
       })
     } else {
       mainView.value.goTo({
@@ -493,6 +527,7 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
       <MvtRenderer
         :style="activeStyle"
         :tile-url="customTileUrl || undefined"
+        :opacity="fillOpacity"
       />
     </MaplibreProvider>
 
@@ -502,6 +537,7 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
       :style="activeStyle"
       :tile-url="customTileUrl || undefined"
       :index="calculatedArcgisIndex"
+      :opacity="fillOpacity"
     />
 
     <div
@@ -615,7 +651,9 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
                 <span class="dot red-dot"></span>
                 <strong>{{ t.topLayer }}</strong>
               </div>
-              <span class="badge-index">Index 2</span>
+              <span class="badge-index">
+                {{ currentMode === 'arcgis' ? (mvtLayerPosition === 'middle' ? 'Index 1' : 'Index 0') : 'Index 2' }}
+              </span>
             </div>
 
             <div class="stack-item stack-middle active-layer">
@@ -624,7 +662,7 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
                 <strong>{{ t.middleLayer }}</strong>
               </div>
               <span class="badge-index">
-                {{ viewDimension === '3d' ? '3D Globe Surface' : (currentMode === 'arcgis' ? `Index ${calculatedArcgisIndex}` : 'Sandwich') }}
+                {{ viewDimension === '3d' ? (mvtLayerPosition === 'middle' ? 'Index 0' : 'Index 1') : (currentMode === 'arcgis' ? `Index ${calculatedArcgisIndex}` : 'Sandwich') }}
               </span>
             </div>
 
@@ -633,7 +671,7 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
                 <span class="dot gray-dot"></span>
                 <strong>{{ t.bottomLayer }}</strong>
               </div>
-              <span class="badge-index">Index 0</span>
+              <span class="badge-index">{{ currentMode === 'arcgis' ? 'Basemap' : 'Index 0' }}</span>
             </div>
           </div>
 

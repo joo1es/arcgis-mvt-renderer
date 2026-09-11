@@ -10,6 +10,11 @@ export interface MvtRendererProps {
   style: string | Record<string, any>
 
   /**
+   * 图层透明度 (0 ~ 1)
+   */
+  opacity?: number
+
+  /**
    * ArcGIS 模式下的图层层级索引 (对应 view.map.add(layer, index))
    */
   index?: number

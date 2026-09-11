@@ -182,6 +182,7 @@ const syncArcgisLayer = async () => {
 
   arcgisLayer = new VectorTileLayer({
     style: arcgisStyle.value as any,
+    opacity: typeof props.opacity === 'number' ? props.opacity : 1,
   })
 
   if (typeof props.index === 'number') {
@@ -191,21 +192,64 @@ const syncArcgisLayer = async () => {
   }
 }
 
+let arcgisSyncTimer: any = null
+const triggerArcgisSync = () => {
+  if (arcgisSyncTimer) clearTimeout(arcgisSyncTimer)
+  arcgisSyncTimer = setTimeout(() => {
+    syncArcgisLayer()
+  }, 100)
+}
+
 // ------------------- 响应式生命周期统一调度 -------------------
 watch(
   [resolvedStyleObject, isMapLibreMode],
-  ([styleObj, isMapLibre]) => {
+  ([styleObj, isMapLibre], oldVals) => {
+    const isModeChanged = !oldVals || oldVals[1] !== isMapLibre
     if (isMapLibre) {
       removeArcgisLayer()
       if (styleObj) addMapLibreLayers(styleObj)
       else removeMapLibreLayers()
     } else {
       removeMapLibreLayers()
-      if (styleObj || arcgisStyle.value) syncArcgisLayer()
-      else removeArcgisLayer()
+      if (styleObj || arcgisStyle.value) {
+        if (isModeChanged) syncArcgisLayer()
+        else triggerArcgisSync()
+      } else {
+        removeArcgisLayer()
+      }
     }
   },
   { immediate: true }
+)
+
+// 响应 opacity 变动（即时更新 GPU 渲染，零瓦片重载，避免拖拽时不断销毁重建闪烁）
+watch(
+  () => props.opacity,
+  (newOpacity) => {
+    if (typeof newOpacity !== 'number') return
+
+    if (!isMapLibreMode.value && arcgisLayer) {
+      // ArcGIS 模式：直接更新图层透明度属性
+      arcgisLayer.opacity = newOpacity
+    } else if (isMapLibreMode.value && mapContext?.value) {
+      // MapLibre 模式：直接更新已挂载图层的 paint 属性
+      const mapInstance = mapContext.value
+      addedLayerIds.forEach((layerId) => {
+        const lyr = mapInstance.getLayer(layerId)
+        if (lyr) {
+          if (lyr.type === 'fill') {
+            mapInstance.setPaintProperty(layerId, 'fill-opacity', newOpacity)
+          } else if (lyr.type === 'line') {
+            mapInstance.setPaintProperty(layerId, 'line-opacity', newOpacity)
+          } else if (lyr.type === 'circle') {
+            mapInstance.setPaintProperty(layerId, 'circle-opacity', newOpacity)
+          } else if (lyr.type === 'raster') {
+            mapInstance.setPaintProperty(layerId, 'raster-opacity', newOpacity)
+          }
+        }
+      })
+    }
+  }
 )
 
 // 响应 index 变动 (仅 ArcGIS 模式有效)
@@ -219,6 +263,7 @@ watch(
 )
 
 onUnmounted(() => {
+  if (arcgisSyncTimer) clearTimeout(arcgisSyncTimer)
   removeMapLibreLayers()
   removeArcgisLayer()
 })
