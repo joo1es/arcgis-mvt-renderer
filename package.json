@@ -6,13 +6,19 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "style": "./dist/arcgis-mvt-renderer.css",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
-    "./dist/style.css": "./dist/style.css"
+    "./dist/style.css": "./dist/arcgis-mvt-renderer.css",
+    "./dist/arcgis-mvt-renderer.css": "./dist/arcgis-mvt-renderer.css"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "files": [
     "dist",
