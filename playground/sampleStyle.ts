@@ -1,6 +1,8 @@
 export interface StylePreset {
   name: string
+  name_en: string
   description: string
+  description_en: string
   center: [number, number]
   zoom: number
   tileUrl?: string
@@ -12,8 +14,10 @@ export interface StylePreset {
  */
 export const PRESETS: StylePreset[] = [
   {
-    name: 'MapLibre Demo Countries (Polygon Fill)',
+    name: 'MapLibre 官方国家多边形面',
+    name_en: 'MapLibre Demo Countries (Fill)',
     description: '官方公开全球国家多边形面切片 (测试实心多边形与边框渲染)',
+    description_en: 'Official public vector tiles with countries polygons & outlines',
     center: [105, 35],
     zoom: 3,
     style: {
@@ -49,8 +53,10 @@ export const PRESETS: StylePreset[] = [
     },
   },
   {
-    name: 'OpenStreetMap Carto Vector Polygons',
+    name: '城市绿地与建筑面切片',
+    name_en: 'Urban Landuse & Buildings',
     description: '建筑物与土地利用面矢量切片',
+    description_en: 'Urban landuse, water and polygon fill layers',
     center: [114.3055, 30.5928],
     zoom: 12,
     style: {
@@ -86,8 +92,10 @@ export const PRESETS: StylePreset[] = [
     },
   },
   {
-    name: 'Custom Service (自定义测试源)',
+    name: '自定义切片服务测试',
+    name_en: 'Custom MVT Service',
     description: '可直接在下方输入自定义切片 URL 进行测试',
+    description_en: 'Directly input custom MVT URL below to test',
     center: [114.79, 30.91],
     zoom: 11,
     tileUrl: 'http://192.168.110.251:38080/v1/mvt/layer/mvt?layer=D20260529-000003-01&z={z}&x={x}&y={y}',

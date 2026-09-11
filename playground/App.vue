@@ -15,6 +15,75 @@ import '@arcgis/core/assets/esri/themes/light/main.css'
 import { MaplibreProvider, MvtRenderer } from '../src'
 import { PRESETS } from './sampleStyle'
 
+// 国际化语言状态
+const lang = ref<'zh' | 'en'>('zh')
+
+// 多语言字典
+const i18n = {
+  zh: {
+    title: 'arcgis-mvt-renderer',
+    subtitle: 'Z-Index 与多引擎交互式演练场',
+    github: 'GitHub ⭐️',
+    engineTitle: '渲染引擎模式',
+    maplibreMode: '🟢 MapLibre 模式',
+    arcgisMode: '🔵 ArcGIS 原生模式',
+    coreTag: '🎯 核心',
+    zIndexTitle: 'Z-Index 层级匹配演示',
+    topLayer: '顶层：ArcGIS 标绘与注记',
+    middleLayer: '中层：MvtRenderer 矢量面切片',
+    bottomLayer: '底层：ArcGIS 天地图/矢量底图',
+    sandwichBtn: '🥪 夹心层 (在底图上、标绘下)',
+    overlapBtn: '🛑 覆盖测试 (MVT 升至最顶)',
+    sandwichToggle: '启用三层夹心层穿透 (Sandwich)',
+    sandwichOnTip: '✅ 开启三层夹心：通过透明 View 穿透，红色的顶层城市标绘清晰浮在 MapLibre MVT 多边形之上！',
+    sandwichOffTip: '❌ 关闭夹心：MapLibre DOM 覆盖在最上方，底层的 ArcGIS 标绘被面数据完全遮挡！',
+    showGraphics: '显示高亮标绘图钉与注记',
+    presetTitle: '样例切片源',
+    customUrlTitle: '自定义瓦片 URL (可选覆盖)',
+    customUrlPlaceholder: '例如: https://.../{z}/{x}/{y}.pbf',
+    fillColor: '填充颜色',
+    opacity: '透明度',
+    basemapTitle: '底图风格',
+    grayBasemap: '浅灰矢量',
+    satelliteBasemap: '高清影像',
+    streetsBasemap: '标准街道',
+    centerLabel: '中心坐标',
+    zoomLabel: '当前层级',
+  },
+  en: {
+    title: 'arcgis-mvt-renderer',
+    subtitle: 'Z-Index & Multi-Engine Playground',
+    github: 'GitHub ⭐️',
+    engineTitle: 'Rendering Engine',
+    maplibreMode: '🟢 MapLibre Mode',
+    arcgisMode: '🔵 ArcGIS Native Mode',
+    coreTag: '🎯 Core',
+    zIndexTitle: 'Z-Index Layer Stacking Demo',
+    topLayer: 'Top: ArcGIS Graphics & Pins',
+    middleLayer: 'Middle: MvtRenderer Vector Tiles',
+    bottomLayer: 'Bottom: ArcGIS Basemap',
+    sandwichBtn: '🥪 Sandwich (Above Base, Below Pins)',
+    overlapBtn: '🛑 Overlap (MVT on Top of Pins)',
+    sandwichToggle: 'Enable 3-Layer Sandwich Stacking',
+    sandwichOnTip: '✅ Sandwich Enabled: Red markers & labels float cleanly on top of MapLibre polygon fills via transparent view overlay!',
+    sandwichOffTip: '❌ Sandwich Disabled: MapLibre DOM sits on top, completely obscuring all underlying ArcGIS graphics!',
+    showGraphics: 'Show Highlight Pins & Route',
+    presetTitle: 'Sample Vector Tile Presets',
+    customUrlTitle: 'Custom Tile URL (Optional Override)',
+    customUrlPlaceholder: 'e.g. https://.../{z}/{x}/{y}.pbf',
+    fillColor: 'Fill Color',
+    opacity: 'Opacity',
+    basemapTitle: 'Basemap Style',
+    grayBasemap: 'Light Gray',
+    satelliteBasemap: 'Satellite',
+    streetsBasemap: 'Streets',
+    centerLabel: 'Center',
+    zoomLabel: 'Zoom',
+  },
+}
+
+const t = computed(() => i18n[lang.value])
+
 // 地图 DOM 节点与实例
 const mainMapRef = ref<HTMLDivElement>()
 const topMapRef = ref<HTMLDivElement>()
@@ -59,9 +128,6 @@ const activeStyle = computed(() => {
 
 // 计算 ArcGIS 原生模式下的 layer index
 const calculatedArcgisIndex = computed(() => {
-  // 底图是 index 0，GraphicsLayer 是 index 2
-  // 如果是 middle，MVT 设为 index 1（夹在底图与标绘中间）
-  // 如果是 top，MVT 设为 index 3（覆盖在标绘之上）
   return mvtLayerPosition.value === 'middle' ? 1 : 3
 })
 
@@ -103,7 +169,6 @@ const buildDemoGraphics = () => {
 
   // 2. 城市高亮标绘与文本注记
   cities.forEach((c) => {
-    // 红色醒目外圈发光图钉
     graphics.push(
       new Graphic({
         geometry: new Point({ longitude: c.coords[0], latitude: c.coords[1] }),
@@ -115,7 +180,6 @@ const buildDemoGraphics = () => {
       })
     )
 
-    // 醒目文本标签
     graphics.push(
       new Graphic({
         geometry: new Point({ longitude: c.coords[0], latitude: c.coords[1] }),
@@ -152,12 +216,18 @@ onMounted(async () => {
     },
   })
 
-  view.watch('center', (c) => {
-    if (c) centerInfo.value = `${c.longitude.toFixed(4)}, ${c.latitude.toFixed(4)}`
-  })
-  view.watch('zoom', (z) => {
-    if (typeof z === 'number') zoomInfo.value = z.toFixed(2)
-  })
+  // 关键：全面使用 reactiveUtils.watch 代替已弃用的 view.watch()，避免 4.32+ 废弃警告
+  reactiveUtils.watch(
+    () => [view.center?.longitude, view.center?.latitude, view.zoom],
+    ([lon, lat, z]) => {
+      if (typeof lon === 'number' && typeof lat === 'number') {
+        centerInfo.value = `${lon.toFixed(4)}, ${lat.toFixed(4)}`
+      }
+      if (typeof z === 'number') {
+        zoomInfo.value = z.toFixed(2)
+      }
+    }
+  )
 
   mainView.value = view
 
@@ -179,7 +249,6 @@ onMounted(async () => {
     },
   })
 
-  // 顶层视图禁止拦截鼠标事件（让手势直接透传到底层主地图）
   if (tView.container) {
     tView.container.style.pointerEvents = 'none'
   }
@@ -206,23 +275,17 @@ const updateLayerPlacement = () => {
   const tView = topView.value
   if (!gLayer || !mView?.map || !tView?.map) return
 
-  // 先从两个地图中均移除
   mView.map.remove(gLayer)
   tView.map.remove(gLayer)
 
   if (!showTopGraphics.value) return
 
   if (currentMode.value === 'arcgis') {
-    // ArcGIS 原生模式：标绘始终加在主地图的 index 2
-    // MVT 会根据 calculatedArcgisIndex 动态插在 index 1 (下方) 或 index 3 (上方)
     mView.map.add(gLayer, 2)
   } else {
-    // MapLibre 模式：
     if (maplibreSandwichEnabled.value && mvtLayerPosition.value === 'middle') {
-      // 开启夹心饼干架构：标绘放在顶层透明视图（z-index 高于 MapLibre）
       tView.map.add(gLayer)
     } else {
-      // 未启用夹心或测试被覆盖：标绘放在底层主视图（被 MapLibre 遮挡）
       mView.map.add(gLayer)
     }
   }
@@ -232,7 +295,6 @@ watch([currentMode, mvtLayerPosition, showTopGraphics, maplibreSandwichEnabled],
   updateLayerPlacement()
 })
 
-// 切换预设样例
 const handleSelectPreset = (idx: number) => {
   activePresetIndex.value = idx
   const preset = PRESETS[idx]
@@ -245,7 +307,6 @@ const handleSelectPreset = (idx: number) => {
   }
 }
 
-// 切换底图
 const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector') => {
   selectedBasemap.value = bm
   if (mainView.value?.map) {
@@ -257,11 +318,8 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
 <template>
   <div class="playground-container">
     <!-- ================= 三层三维视口容器 ================= -->
-
-    <!-- 层级 1：底层 ArcGIS 主地图 (承载底图与基础图层) -->
     <div ref="mainMapRef" class="map-view-surface z-bottom" />
 
-    <!-- 层级 2：中层 MapLibre 矢量瓦片提供者 (仅在 MapLibre 模式挂载) -->
     <MaplibreProvider
       v-if="currentMode === 'maplibre' && mainView"
       :view="mainView"
@@ -273,7 +331,6 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
       />
     </MaplibreProvider>
 
-    <!-- ArcGIS 原生模式：直接挂载 MvtRenderer 到主地图，通过 calculatedArcgisIndex 排序 -->
     <MvtRenderer
       v-else-if="currentMode === 'arcgis' && mainView"
       :view="mainView"
@@ -282,7 +339,6 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
       :index="calculatedArcgisIndex"
     />
 
-    <!-- 层级 3：顶层透明 ArcGIS MapView (仅用于 MapLibre 模式下的夹心饼干标绘) -->
     <div
       ref="topMapRef"
       class="map-view-surface z-top"
@@ -293,41 +349,58 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
 
     <!-- ================= 控制悬浮面板 ================= -->
     <div class="control-panel">
-      <!-- 头部 -->
+      <!-- 头部：语言切换与项目信息 -->
       <div class="panel-header">
         <div class="title-wrap">
           <span class="logo-emoji">🗺️</span>
           <div>
-            <h3>arcgis-mvt-renderer</h3>
-            <p class="subtitle">Z-Index & Multi-Engine Playground</p>
+            <h3>{{ t.title }}</h3>
+            <p class="subtitle">{{ t.subtitle }}</p>
           </div>
         </div>
-        <a
-          href="https://github.com/joo1es/arcgis-mvt-renderer"
-          target="_blank"
-          class="github-badge"
-          rel="noreferrer"
-        >
-          GitHub ⭐️
-        </a>
+        <div class="header-right">
+          <!-- 语言切换药丸按钮 -->
+          <div class="lang-switch">
+            <button
+              :class="['btn-lang', { active: lang === 'zh' }]"
+              @click="lang = 'zh'"
+            >
+              中
+            </button>
+            <button
+              :class="['btn-lang', { active: lang === 'en' }]"
+              @click="lang = 'en'"
+            >
+              EN
+            </button>
+          </div>
+          <a
+            href="https://github.com/joo1es/arcgis-mvt-renderer"
+            target="_blank"
+            class="github-badge"
+            rel="noreferrer"
+          >
+            {{ t.github }}
+          </a>
+        </div>
       </div>
 
       <div class="panel-body">
         <!-- 1. 渲染模式切换 -->
         <div class="form-group">
-          <label class="form-label">渲染引擎模式</label>
+          <label class="form-label">{{ t.engineTitle }}</label>
           <div class="mode-switch">
             <button
               :class="['btn-mode', { active: currentMode === 'maplibre' }]"
               @click="currentMode = 'maplibre'"
             >
-              🟢 MapLibre 模式
+              {{ t.maplibreMode }}
             </button>
             <button
               :class="['btn-mode', { active: currentMode === 'arcgis' }]"
               @click="currentMode = 'arcgis'"
             >
-              🔵 ArcGIS 原生模式
+              {{ t.arcgisMode }}
             </button>
           </div>
         </div>
@@ -335,8 +408,8 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
         <!-- 2. Z-Index 层级层序控制 (核心演示) -->
         <div class="form-group z-index-section">
           <div class="section-title-wrap">
-            <span class="section-badge">🎯 核心</span>
-            <label class="form-label highlight-title">Z-Index 层级匹配演示</label>
+            <span class="section-badge">{{ t.coreTag }}</span>
+            <label class="form-label highlight-title">{{ t.zIndexTitle }}</label>
           </div>
 
           <!-- 层级可视化指示条 -->
@@ -349,7 +422,7 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
             >
               <div class="item-left">
                 <span class="dot red-dot"></span>
-                <strong>顶层：ArcGIS 标绘与注记</strong>
+                <strong>{{ t.topLayer }}</strong>
               </div>
               <span class="badge-index">Index 2</span>
             </div>
@@ -357,7 +430,7 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
             <div class="stack-item stack-middle active-layer">
               <div class="item-left">
                 <span class="dot blue-dot"></span>
-                <strong>中层：MvtRenderer 矢量切片面</strong>
+                <strong>{{ t.middleLayer }}</strong>
               </div>
               <span class="badge-index">
                 {{ currentMode === 'arcgis' ? `Index ${calculatedArcgisIndex}` : 'Sandwich' }}
@@ -367,7 +440,7 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
             <div class="stack-item stack-bottom">
               <div class="item-left">
                 <span class="dot gray-dot"></span>
-                <strong>底层：ArcGIS 天地图/矢量底图</strong>
+                <strong>{{ t.bottomLayer }}</strong>
               </div>
               <span class="badge-index">Index 0</span>
             </div>
@@ -379,20 +452,20 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
               :class="['btn-z', { active: mvtLayerPosition === 'middle' }]"
               @click="mvtLayerPosition = 'middle'"
             >
-              🥪 夹心层 (在底图上、标绘下)
+              {{ t.sandwichBtn }}
             </button>
             <button
               :class="['btn-z', { active: mvtLayerPosition === 'top' }]"
               @click="mvtLayerPosition = 'top'"
             >
-              🛑 覆盖测试 (MVT 升至最顶)
+              {{ t.overlapBtn }}
             </button>
           </div>
 
           <!-- MapLibre 模式特有：三层夹心饼干架构开关 -->
           <div v-if="currentMode === 'maplibre'" class="sandwich-toggle-box">
             <div class="toggle-row">
-              <span class="toggle-label">启用三层夹心层穿透</span>
+              <span class="toggle-label">{{ t.sandwichToggle }}</span>
               <input
                 v-model="maplibreSandwichEnabled"
                 type="checkbox"
@@ -400,15 +473,13 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
               />
             </div>
             <p class="toggle-tip">
-              {{ maplibreSandwichEnabled
-                ? '✅ 开启三层夹心：通过透明 View 穿透，红色的顶层城市标绘清晰浮在 MapLibre MVT 多边形之上！'
-                : '❌ 关闭夹心：MapLibre DOM 覆盖在最上方，底层的 ArcGIS 标绘被面数据完全遮挡！' }}
+              {{ maplibreSandwichEnabled ? t.sandwichOnTip : t.sandwichOffTip }}
             </p>
           </div>
 
           <!-- 标绘显隐开关 -->
           <div class="toggle-row mini-toggle">
-            <span class="toggle-label">显示高亮标绘图钉与注记</span>
+            <span class="toggle-label">{{ t.showGraphics }}</span>
             <input
               v-model="showTopGraphics"
               type="checkbox"
@@ -419,7 +490,7 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
 
         <!-- 3. 切片源预设 -->
         <div class="form-group">
-          <label class="form-label">样例切片源</label>
+          <label class="form-label">{{ t.presetTitle }}</label>
           <div class="preset-list">
             <button
               v-for="(p, idx) in PRESETS"
@@ -427,30 +498,30 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
               :class="['btn-preset', { active: activePresetIndex === idx }]"
               @click="handleSelectPreset(idx)"
             >
-              {{ p.name }}
+              {{ lang === 'zh' ? p.name : p.name_en }}
             </button>
           </div>
         </div>
 
         <!-- 4. 自定义切片 URL 覆盖 -->
         <div class="form-group">
-          <label class="form-label">自定义瓦片 URL (可选)</label>
+          <label class="form-label">{{ t.customUrlTitle }}</label>
           <input
             v-model="customTileUrl"
             type="text"
             class="input-text"
-            placeholder="例如: https://.../{z}/{x}/{y}.pbf"
+            :placeholder="t.customUrlPlaceholder"
           />
         </div>
 
         <!-- 5. 颜色与透明度调节 -->
         <div class="form-group row-group">
           <div class="color-item">
-            <label class="form-label">填充颜色</label>
+            <label class="form-label">{{ t.fillColor }}</label>
             <input v-model="fillColor" type="color" class="input-color" />
           </div>
           <div class="slider-item">
-            <label class="form-label">透明度: {{ Math.round(fillOpacity * 100) }}%</label>
+            <label class="form-label">{{ t.opacity }}: {{ Math.round(fillOpacity * 100) }}%</label>
             <input
               v-model.number="fillOpacity"
               type="range"
@@ -464,25 +535,25 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
 
         <!-- 6. 底图切换 -->
         <div class="form-group">
-          <label class="form-label">底图风格</label>
+          <label class="form-label">{{ t.basemapTitle }}</label>
           <div class="preset-list">
             <button
               :class="['btn-preset', { active: selectedBasemap === 'gray-vector' }]"
               @click="handleChangeBasemap('gray-vector')"
             >
-              浅灰矢量
+              {{ t.grayBasemap }}
             </button>
             <button
               :class="['btn-preset', { active: selectedBasemap === 'satellite' }]"
               @click="handleChangeBasemap('satellite')"
             >
-              高清影像
+              {{ t.satelliteBasemap }}
             </button>
             <button
               :class="['btn-preset', { active: selectedBasemap === 'streets-vector' }]"
               @click="handleChangeBasemap('streets-vector')"
             >
-              标准街道
+              {{ t.streetsBasemap }}
             </button>
           </div>
         </div>
@@ -490,11 +561,11 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
         <!-- 7. 视口信息 -->
         <div class="status-box">
           <div class="status-row">
-            <span>中心坐标:</span>
+            <span>{{ t.centerLabel }}:</span>
             <strong>{{ centerInfo }}</strong>
           </div>
           <div class="status-row">
-            <span>当前层级:</span>
+            <span>{{ t.zoomLabel }}:</span>
             <strong>{{ zoomInfo }}</strong>
           </div>
         </div>
@@ -551,10 +622,10 @@ body {
   position: absolute;
   top: 20px;
   left: 20px;
-  width: 390px;
+  width: 400px;
   max-height: calc(100vh - 40px);
   overflow-y: auto;
-  background: rgba(255, 255, 255, 0.94);
+  background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(14px);
   border-radius: 14px;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.16);
@@ -592,8 +663,40 @@ body {
   color: #6b7280;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 语言切换药丸按钮 */
+.lang-switch {
+  display: flex;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.btn-lang {
+  border: none;
+  background: transparent;
+  padding: 2px 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #64748b;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-lang.active {
+  background: #3b82f6;
+  color: #ffffff;
+}
+
 .github-badge {
-  font-size: 12px;
+  font-size: 11.5px;
   padding: 4px 8px;
   background: #24292f;
   color: #fff;
@@ -820,6 +923,11 @@ body {
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s;
+}
+
+.btn-preset:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
 }
 
 .btn-preset.active {
