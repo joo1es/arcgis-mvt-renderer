@@ -238,15 +238,27 @@ onMounted(() => {
 
 ## 📖 API Reference
 
-### `<MvtRenderer>`
+### `<MvtRenderer>` (Fully Aligned with ArcGIS `VectorTileLayer`)
 
 | Prop | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `style` | `string \| Record<string, any>` | **Required** | Standard Mapbox Style Spec v8 object, JSON string, or remote `style.json` URL. |
-| `index` | `number` | `undefined` | Layer ordering index in ArcGIS native mode (corresponds to `view.map.add(layer, index)`). |
-| `beforeId` | `string` | `undefined` | Layer ID before which this layer should be inserted in MapLibre mode (corresponds to `addLayer(layer, beforeId)`). |
-| `tileUrl` | `string` | `undefined` | Optional. Dynamically overrides or injects tile URL templates into vector sources. |
-| `view` | `MapView` | `undefined` | Optional. Explicitly provide ArcGIS MapView instance. Defaults to auto-resolving via `inject('view')`. |
+| `style` | `string \| Record<string, any>` | `undefined` | Standard Mapbox/ArcGIS Style Spec v8 object, JSON string, or remote `style.json` URL. Mutually interchangeable with `url`. |
+| `url` | `string` | `undefined` | Vector tile service URL or style JSON URL, **fully aligned with ArcGIS `VectorTileLayer.url`**. Supports `{z}/{x}/{y}` tile template strings. |
+| `opacity` | `number` | `1` | Layer opacity (`0 ~ 1`), **fully aligned with ArcGIS `VectorTileLayer.opacity`**. Enables smooth fading without flickering or reloading tiles. |
+| `visible` | `boolean` | `true` | Visibility state of the layer, **fully aligned with ArcGIS `VectorTileLayer.visible`**. |
+| `index` | `number` | `undefined` | Layer ordering index in ArcGIS mode (corresponds to `view.map.add(layer, index)`). |
+| `id` | `string` | `undefined` | Unique layer ID, **fully aligned with ArcGIS `VectorTileLayer.id`**. |
+| `title` | `string` | `undefined` | Layer title for LayerList & Legend widgets, **fully aligned with ArcGIS `VectorTileLayer.title`**. |
+| `minScale` | `number` | `undefined` | Minimum visible scale, **fully aligned with ArcGIS `VectorTileLayer.minScale`**. |
+| `maxScale` | `number` | `undefined` | Maximum visible scale, **fully aligned with ArcGIS `VectorTileLayer.maxScale`**. |
+| `customParameters` | `Record<string, any>` | `undefined` | Custom query parameters appended to requests (e.g. token, apikey), **fully aligned with ArcGIS `VectorTileLayer.customParameters`**. |
+| `blendMode` | `string` | `undefined` | Layer compositing blend mode (`'multiply'`, `'screen'`, etc.), **fully aligned with ArcGIS `VectorTileLayer.blendMode`**. |
+| `effect` | `string` | `undefined` | Layer CSS/shader effect filter (`'drop-shadow(...)'`, `'bloom(...)'`), **fully aligned with ArcGIS `VectorTileLayer.effect`**. |
+| `listMode` | `'show' \| 'hide' \| 'hide-children'` | `undefined` | Visibility in ArcGIS LayerList widget. |
+| `legendEnabled` | `boolean` | `true` | Whether the layer is displayed in Legend widget. |
+| `tileUrl` | `string` | `undefined` | Optional tile URL template to override sources' tile endpoints. |
+| `beforeId` | `string` | `undefined` | Layer ID before which to insert this layer in MapLibre mode (corresponds to `addLayer(layer, beforeId)`). |
+| `view` | `MapView \| SceneView` | `undefined` | Explicitly provide ArcGIS View instance. Defaults to auto-resolving via `inject('view')`. |
 
 ### `<MaplibreProvider>`
 

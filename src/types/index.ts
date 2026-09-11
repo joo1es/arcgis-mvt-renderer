@@ -4,20 +4,77 @@ import type { Map as MapLibreMap, MapOptions } from 'maplibre-gl'
 
 export interface MvtRendererProps {
   /**
-   * 传统的矢量瓦片样式
-   * 支持标准的 Mapbox/ArcGIS Style Spec v8 样式对象、JSON 字符串，或者远程 style.json 的 URL
+   * 矢量瓦片样式
+   * 支持标准的 Mapbox/ArcGIS Style Spec v8 样式对象、JSON 字符串，或者远程 style.json 的 URL。
+   * 也可与 url 属性互换使用。
    */
-  style: string | Record<string, any>
+  style?: string | Record<string, any>
 
   /**
-   * 图层透明度 (0 ~ 1)
+   * 矢量切片服务 URL 或样式 JSON 访问地址（完全对齐 ArcGIS VectorTileLayer.url 入参）
+   * 若不传 style，则直接使用 url 作为样式请求地址；若传入包含 {z}/{x}/{y} 则自动作为瓦片切片数据源。
+   */
+  url?: string
+
+  /**
+   * 图层不透明度 (0 ~ 1)，对齐 ArcGIS VectorTileLayer.opacity
    */
   opacity?: number
+
+  /**
+   * 图层显隐状态，对齐 ArcGIS VectorTileLayer.visible
+   */
+  visible?: boolean
 
   /**
    * ArcGIS 模式下的图层层级索引 (对应 view.map.add(layer, index))
    */
   index?: number
+
+  /**
+   * 图层唯一标识 ID，对齐 ArcGIS VectorTileLayer.id
+   */
+  id?: string
+
+  /**
+   * 图层标题（用于图层列表 LayerList 与图例组件），对齐 ArcGIS VectorTileLayer.title
+   */
+  title?: string
+
+  /**
+   * 最小可见比例尺，对齐 ArcGIS VectorTileLayer.minScale
+   */
+  minScale?: number
+
+  /**
+   * 最大可见比例尺，对齐 ArcGIS VectorTileLayer.maxScale
+   */
+  maxScale?: number
+
+  /**
+   * 自定义请求参数字典（如 token, apikey 等），对齐 ArcGIS VectorTileLayer.customParameters
+   */
+  customParameters?: Record<string, any>
+
+  /**
+   * 图层混合模式（如 'normal' | 'multiply' | 'screen' 等），对齐 ArcGIS VectorTileLayer.blendMode
+   */
+  blendMode?: string
+
+  /**
+   * 图层特效滤镜（如 'drop-shadow(...)' | 'bloom(...)' 等），对齐 ArcGIS VectorTileLayer.effect
+   */
+  effect?: string
+
+  /**
+   * 图例中是否启用，对齐 ArcGIS VectorTileLayer.legendEnabled
+   */
+  legendEnabled?: boolean
+
+  /**
+   * 图层列表中显示模式 ('show' | 'hide' | 'hide-children')，对齐 ArcGIS VectorTileLayer.listMode
+   */
+  listMode?: 'show' | 'hide' | 'hide-children'
 
   /**
    * MapLibre 模式下指定插入在哪个图层之前（对应 map.addLayer(layer, beforeId)）
@@ -30,7 +87,7 @@ export interface MvtRendererProps {
   tileUrl?: string
 
   /**
-   * 可选：显式传入当前 ArcGIS MapView 实例；若不传则自动从父级 inject('view') 获取
+   * 可选：显式传入当前 ArcGIS MapView / SceneView 实例；若不传则自动从父级 inject('view') 获取
    */
   view?: any
 }

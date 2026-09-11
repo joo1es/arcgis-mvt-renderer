@@ -238,15 +238,27 @@ onMounted(() => {
 
 ## 📖 API 参数详解
 
-### `<MvtRenderer>`
+### `<MvtRenderer>`（参数完全对齐 ArcGIS VectorTileLayer）
 
 | 属性名 | 类型 | 默认值 | 说明 |
 | :--- | :--- | :--- | :--- |
-| `style` | `string \| Record<string, any>` | **必填** | 标准 Mapbox Style Spec v8 样式对象、JSON 字符串，或远程 `style.json` 访问地址。 |
-| `index` | `number` | `undefined` | ArcGIS 模式下的图层层级（映射至 `view.map.add(layer, index)`）。 |
-| `beforeId` | `string` | `undefined` | MapLibre 模式下指定插入在该图层之前（映射至 `addLayer(layer, beforeId)`）。 |
-| `tileUrl` | `string` | `undefined` | 可选，动态覆盖或替换样式中 vector source 的切片 URL 请求模板。 |
-| `view` | `MapView` | `undefined` | 可选，显式传入 ArcGIS MapView 实例。若不传则自动通过 `inject('view')` 查找。 |
+| `style` | `string \| Record<string, any>` | `undefined` | 标准 Mapbox/ArcGIS Style Spec v8 样式对象、JSON 字符串，或远程 `style.json` 访问地址。与 `url` 属性二选一。 |
+| `url` | `string` | `undefined` | 矢量切片服务地址或样式文件 URL，**完全对齐 ArcGIS `VectorTileLayer.url`**。支持传入包含 `{z}/{x}/{y}` 的切片模板。 |
+| `opacity` | `number` | `1` | 图层不透明度 (`0 ~ 1`)，**完全对齐 ArcGIS `VectorTileLayer.opacity`**。支持平滑渐变，无刷新闪烁。 |
+| `visible` | `boolean` | `true` | 图层显隐状态，**完全对齐 ArcGIS `VectorTileLayer.visible`**。 |
+| `index` | `number` | `undefined` | ArcGIS 模式下的图层层级索引（映射至 `view.map.add(layer, index)`）。 |
+| `id` | `string` | `undefined` | 图层唯一 ID，**完全对齐 ArcGIS `VectorTileLayer.id`**。 |
+| `title` | `string` | `undefined` | 图层标题（用于图层列表与图例组件），**完全对齐 ArcGIS `VectorTileLayer.title`**。 |
+| `minScale` | `number` | `undefined` | 最小可见比例尺，**完全对齐 ArcGIS `VectorTileLayer.minScale`**。 |
+| `maxScale` | `number` | `undefined` | 最大可见比例尺，**完全对齐 ArcGIS `VectorTileLayer.maxScale`**。 |
+| `customParameters` | `Record<string, any>` | `undefined` | 自定义 URL 查询参数（例如 token、apikey 等），**完全对齐 ArcGIS `VectorTileLayer.customParameters`**。 |
+| `blendMode` | `string` | `undefined` | 图层混合模式（如 `'multiply'`、`'screen'` 等），**完全对齐 ArcGIS `VectorTileLayer.blendMode`**。 |
+| `effect` | `string` | `undefined` | 图层特效滤镜（如 `'drop-shadow(...)'`、`'bloom(...)'`），**完全对齐 ArcGIS `VectorTileLayer.effect`**。 |
+| `listMode` | `'show' \| 'hide' \| 'hide-children'` | `undefined` | 图层在 LayerList 列表中的显示方式。 |
+| `legendEnabled` | `boolean` | `true` | 是否在 Legend 图例控件中显示。 |
+| `tileUrl` | `string` | `undefined` | 可选，用于覆盖样式中数据源切片地址（例如动态注入 token 或切换服务器）。 |
+| `beforeId` | `string` | `undefined` | MapLibre 模式下指定插入在哪个图层之前（映射至 `addLayer(layer, beforeId)`）。 |
+| `view` | `MapView \| SceneView` | `undefined` | 可选，显式传入 ArcGIS 视图实例。若不传则自动通过 `inject('view')` 查找。 |
 
 ### `<MaplibreProvider>`
 
