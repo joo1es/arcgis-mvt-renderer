@@ -2,7 +2,7 @@
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
-import { ref, shallowRef, onMounted, onUnmounted, watch } from 'vue'
+import { ref, shallowRef, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useElementSize } from '@vueuse/core'
 import * as reactiveUtils from '@arcgis/core/core/reactiveUtils'
 import { provideMaplibreContext, useArcGISView } from '../composables/useMvtContext'
@@ -17,15 +17,19 @@ const props = withDefaults(
       view?: any
     }
   >(),
-  {}
+  {
+    attachToView: true,
+  }
 )
 
 // 获取 ArcGIS MapView 实例
 const view = useArcGISView(props.view)
 
+const containerRef = ref<HTMLDivElement>()
 const mapRef = ref<HTMLDivElement>()
 const loaded = ref(false)
 const map = shallowRef<maplibregl.Map | null>(null)
+const teleportTarget = shallowRef<HTMLElement | null>(null)
 
 // 注入 MapLibre 上下文，供子组件 MvtRenderer 获取
 provideMaplibreContext(map)
@@ -92,12 +96,28 @@ const syncMap = () => {
 }
 
 onMounted(async () => {
-  if (!mapRef.value || !view) return
+  if (!view) return
 
   // 等待 ArcGIS View ready
   if (typeof view.when === 'function') {
     await view.when()
   }
+
+  // 若开启 attachToView（默认开启），自动挂载至 view.root 内部且置于 .esri-ui 之下
+  if (props.attachToView !== false) {
+    const root = (view as any).root || view.container?.querySelector?.('.esri-view-root') || view.container
+    if (root) {
+      teleportTarget.value = root
+      // 确保 ArcGIS 原生 UI 容器 (view.ui.container) 浮于 MapLibre 图层之上
+      if (view.ui?.container) {
+        view.ui.container.style.zIndex = '1'
+      }
+      // 等待 Teleport 将容器节点渲染至目标 DOM 内部
+      await nextTick()
+    }
+  }
+
+  if (!mapRef.value) return
 
   // 检测坐标系：MapLibre GL 属于 Web 墨卡托投影体系
   if (
@@ -167,6 +187,9 @@ onUnmounted(() => {
     map.value.remove()
     map.value = null
   }
+  if (view?.ui?.container) {
+    view.ui.container.style.zIndex = ''
+  }
 })
 
 defineExpose({
@@ -176,7 +199,13 @@ defineExpose({
 </script>
 
 <template>
-  <div class="maplibre-provider-view">
+  <Teleport v-if="teleportTarget" :to="teleportTarget">
+    <div ref="containerRef" class="maplibre-provider-view" v-bind="$attrs">
+      <div ref="mapRef" class="maplibre-provider-content" />
+      <slot v-if="loaded" :map="map" />
+    </div>
+  </Teleport>
+  <div v-else ref="containerRef" class="maplibre-provider-view" v-bind="$attrs">
     <div ref="mapRef" class="maplibre-provider-content" />
     <slot v-if="loaded" :map="map" />
   </div>
@@ -189,6 +218,7 @@ defineExpose({
   pointer-events: none;
   width: 100%;
   height: 100%;
+  z-index: 0;
 }
 
 .maplibre-provider-content {

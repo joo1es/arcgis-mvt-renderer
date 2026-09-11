@@ -102,6 +102,14 @@ export interface MaplibreProviderProps {
    * 可选：显式传入当前 ArcGIS MapView 实例；若不传则自动从父级 inject('view') 获取
    */
   view?: any
+
+  /**
+   * 是否自动挂载至 ArcGIS View 的 DOM 层级内部（介于底层画布与顶层 UI 控件之间）
+   * @default true
+   * - 默认为 true：自动通过 Teleport 挂载至 .esri-view-root 内部并保持在 .esri-ui 之下，零配置解决 UI 与 Powered by Esri 版权信息被遮挡问题
+   * - 若为 false：保持在当前 Vue 模板位置渲染
+   */
+  attachToView?: boolean
 }
 
 export type MaplibreContext = Ref<MapLibreMap | null> | ShallowRef<MapLibreMap | null>
