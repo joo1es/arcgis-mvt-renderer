@@ -834,7 +834,8 @@ body {
 }
 
 .z-bottom {
-  z-index: 1;
+  /* 使用 z-index: auto 避免建立孤立的层叠上下文 (Stacking Context)，使底层的 .esri-ui 能穿透提升到最顶层 */
+  z-index: auto;
 }
 
 .z-middle {
@@ -844,6 +845,11 @@ body {
 .z-top {
   z-index: 10;
   pointer-events: none;
+}
+
+/* 确保 ArcGIS 原生 UI 控件（Powered by Esri 属性版权栏、缩放按钮等）始终置于最顶层，不被 MapLibre 等矢量瓦片图层遮挡 */
+:deep(.esri-ui) {
+  z-index: 15 !important;
 }
 
 /* 浮动控制卡片 */
