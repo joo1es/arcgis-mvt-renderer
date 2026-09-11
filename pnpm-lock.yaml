@@ -21,9 +21,6 @@ importers:
       '@vitejs/plugin-vue':
         specifier: ^5.2.4
         version: 5.2.4(vite@6.4.3(@types/node@22.20.2))(vue@3.5.42(typescript@5.9.3))
-      '@vuesri/core':
-        specifier: ^2.0.0
-        version: 2.1.0(@arcgis/core@4.34.8)(@vunk/core@1.6.9)(vue@3.5.42(typescript@5.9.3))
       maplibre-gl:
         specifier: ^5.24.0
         version: 5.24.0
@@ -650,9 +647,6 @@ packages:
   '@types/trusted-types@2.0.7':
     resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
 
-  '@types/web-bluetooth@0.0.20':
-    resolution: {integrity: sha512-g9gZnnXVq7gM7v3tJCWV/qw7w+KeOlSHAhgF9RytFyifW6AF61hdT2ucrYhPq9hLs5JIryeupHV3qGk95dH9ow==}
-
   '@types/web-bluetooth@0.0.21':
     resolution: {integrity: sha512-oIQLCGWtcFZy2JW77j9k8nHzAOpqMHLQejDA48XXMWH6tjCQHz5RCFz1bzsmROyL6PUm+LLnUiI4BCn221inxA==}
 
@@ -770,33 +764,14 @@ packages:
   '@vue/shared@3.5.42':
     resolution: {integrity: sha512-2rPxex1jQf4jvl9MOHl6YaXCPcrNqz/FstMOEh3QWY+/OME9nQTvl9WYeCwhW7AFjaR0SnngZGlp/wkR6rkI6g==}
 
-  '@vuesri/core@2.1.0':
-    resolution: {integrity: sha512-gug1tKdY3Z55jLvrx61wkXRivQraMVlMoIbg0Y/GXgoe4Gq99x7OEHnXK1/KBuu35Ky4vtRWv+RvwHVRBQu8Kg==}
-    peerDependencies:
-      '@arcgis/core': '>=4.18.0'
-      '@vunk/core': '>=0.0.0-alpha.111'
-      vue: '>=3.3.0'
-
-  '@vueuse/core@10.11.1':
-    resolution: {integrity: sha512-guoy26JQktXPcz+0n3GukWIy/JDNKti9v6VEMu6kV2sYBsWuGiTU8OWdg+ADfUbHg3/3DlqySDe7JmdHrktiww==}
-
   '@vueuse/core@12.8.2':
     resolution: {integrity: sha512-HbvCmZdzAu3VGi/pWYm5Ut+Kd9mn1ZHnn4L5G8kOQTPs/IwIAmJoBrmYk2ckLArgMXZj0AW3n5CAejLUO+PhdQ==}
-
-  '@vueuse/metadata@10.11.1':
-    resolution: {integrity: sha512-IGa5FXd003Ug1qAZmyE8wF3sJ81xGLSqTqtQ6jaVfkeZ4i5kS2mwQF61yhVqojRnenVew5PldLyRgvdl4YYuSw==}
 
   '@vueuse/metadata@12.8.2':
     resolution: {integrity: sha512-rAyLGEuoBJ/Il5AmFHiziCPdQzRt88VxR+Y/A/QhJ1EWtWqPBBAxTAFaSkviwEuOEZNtW8pvkPgoCZQ+HxqW1A==}
 
-  '@vueuse/shared@10.11.1':
-    resolution: {integrity: sha512-LHpC8711VFZlDaYUXEBbFBCQ7GS3dVU9mjOhhMhXP6txTV4EhYQg/KGnQuvt/sPAtoUKq7VVUnL6mVtFoL42sA==}
-
   '@vueuse/shared@12.8.2':
     resolution: {integrity: sha512-dznP38YzxZoNloI0qpEfpkms8knDtaoQ6Y/sfS0L7Yki4zh40LFHEhur0odJC6xTHG5dxWVPiUWBXn+wCG2s5w==}
-
-  '@vunk/core@1.6.9':
-    resolution: {integrity: sha512-vd4sHMPiGRDcY2177FdkXnyfsN7BeT38qFkHIPHslAKOCPFzbjN75Una8uxx67NYIW8C65VA6WgNxGIw2eR2tA==}
 
   '@webcomponents/shadycss@1.11.2':
     resolution: {integrity: sha512-vRq+GniJAYSBmTRnhCYPAPq6THYqovJ/gzGThWbgEZUQaBccndGTi1hdiUP15HzEco0I6t4RCtXyX0rsSmwgPw==}
@@ -1307,9 +1282,6 @@ packages:
     resolution: {integrity: sha512-++gUqRDEvcnN6Zhqrr+y/CkVEHhlrR96vZn3nZZPYzMcBUyBtTKzB9NadClFIsIVSsu+3i9tfk/erqy9kAmt7Q==}
     engines: {node: '>=14'}
 
-  lodash-es@4.18.1:
-    resolution: {integrity: sha512-J8xewKD/Gk22OZbhpOVSwcs60zhd95ESDwezOFuA3/099925PdHJ7OFHNTGtajL3AlZkykD32HykiMo+BIBI8A==}
-
   luxon@3.7.2:
     resolution: {integrity: sha512-vtEhXh/gNjI9Yg1u4jX/0YVPMvxzHuGgCm6tC5kZyb08yjGWGnqAjGJvcXbqQR2P3MyMEFnRbpcdFS6PBcLqew==}
     engines: {node: '>=12'}
@@ -1609,17 +1581,6 @@ packages:
 
   vscode-uri@3.2.0:
     resolution: {integrity: sha512-m2gXo3bn0G1kT9InzMf07fTbqMbGtyckj3bH5ktLO+1Ssv+yiATZ4dhwaQv9UZWxJh6E9IFGnQyjgWVDWVBDrg==}
-
-  vue-demi@0.14.10:
-    resolution: {integrity: sha512-nMZBOwuzabUO0nLgIcc6rycZEebF6eeUfaiQx9+WSk8e29IbLvPU9feI6tqW4kTo3hvoYAJkMh8n8D0fuISphg==}
-    engines: {node: '>=12'}
-    hasBin: true
-    peerDependencies:
-      '@vue/composition-api': ^1.0.0-rc.1
-      vue: ^3.0.0-0 || ^2.6.0
-    peerDependenciesMeta:
-      '@vue/composition-api':
-        optional: true
 
   vue-tsc@2.2.12:
     resolution: {integrity: sha512-P7OP77b2h/Pmk+lZdJ0YWs+5tJ6J2+uOQPo7tlBnY44QqQSPYvS0qVT4wqDJgwrZaLe47etJLLQRFia71GYITw==}
@@ -2215,8 +2176,6 @@ snapshots:
 
   '@types/trusted-types@2.0.7': {}
 
-  '@types/web-bluetooth@0.0.20': {}
-
   '@types/web-bluetooth@0.0.21': {}
 
   '@vaadin/a11y-base@24.9.18':
@@ -2441,26 +2400,6 @@ snapshots:
 
   '@vue/shared@3.5.42': {}
 
-  '@vuesri/core@2.1.0(@arcgis/core@4.34.8)(@vunk/core@1.6.9)(vue@3.5.42(typescript@5.9.3))':
-    dependencies:
-      '@arcgis/core': 4.34.8
-      '@vueuse/core': 10.11.1(vue@3.5.42(typescript@5.9.3))
-      '@vunk/core': 1.6.9
-      lodash-es: 4.18.1
-      vue: 3.5.42(typescript@5.9.3)
-    transitivePeerDependencies:
-      - '@vue/composition-api'
-
-  '@vueuse/core@10.11.1(vue@3.5.42(typescript@5.9.3))':
-    dependencies:
-      '@types/web-bluetooth': 0.0.20
-      '@vueuse/metadata': 10.11.1
-      '@vueuse/shared': 10.11.1(vue@3.5.42(typescript@5.9.3))
-      vue-demi: 0.14.10(vue@3.5.42(typescript@5.9.3))
-    transitivePeerDependencies:
-      - '@vue/composition-api'
-      - vue
-
   '@vueuse/core@12.8.2(typescript@5.9.3)':
     dependencies:
       '@types/web-bluetooth': 0.0.21
@@ -2470,24 +2409,13 @@ snapshots:
     transitivePeerDependencies:
       - typescript
 
-  '@vueuse/metadata@10.11.1': {}
-
   '@vueuse/metadata@12.8.2': {}
-
-  '@vueuse/shared@10.11.1(vue@3.5.42(typescript@5.9.3))':
-    dependencies:
-      vue-demi: 0.14.10(vue@3.5.42(typescript@5.9.3))
-    transitivePeerDependencies:
-      - '@vue/composition-api'
-      - vue
 
   '@vueuse/shared@12.8.2(typescript@5.9.3)':
     dependencies:
       vue: 3.5.42(typescript@5.9.3)
     transitivePeerDependencies:
       - typescript
-
-  '@vunk/core@1.6.9': {}
 
   '@webcomponents/shadycss@1.11.2': {}
 
@@ -3028,8 +2956,6 @@ snapshots:
       pkg-types: 2.3.3
       quansync: 0.2.11
 
-  lodash-es@4.18.1: {}
-
   luxon@3.7.2: {}
 
   magic-string@0.30.21:
@@ -3328,10 +3254,6 @@ snapshots:
       fsevents: 2.3.3
 
   vscode-uri@3.2.0: {}
-
-  vue-demi@0.14.10(vue@3.5.42(typescript@5.9.3)):
-    dependencies:
-      vue: 3.5.42(typescript@5.9.3)
 
   vue-tsc@2.2.12(typescript@5.9.3):
     dependencies:
