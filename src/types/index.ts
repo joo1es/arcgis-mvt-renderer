@@ -2,15 +2,28 @@
 import type { InjectionKey, Ref, ShallowRef } from 'vue'
 import type { Map as MapLibreMap, MapOptions } from 'maplibre-gl'
 
+export type MvtEngineType = 'maplibre' | 'mapbox' | 'arcgis'
+
 export interface MvtRendererProps {
   /**
    * 渲染引擎模式
    * - 'maplibre' (默认值): 使用 MapLibre GL 矢量瓦片渲染管线，天然解决多边形绕向 (Winding Order) 缺失引起的面填充空白问题；多图层自动共享 1 个 WebGL 上下文。
+   * - 'mapbox': 使用 Mapbox GL JS 矢量瓦片渲染管线 (需提供 accessToken 或通过 MapboxOptions 传入)；多图层同样自动共享 1 个 WebGL 上下文。
    * - 'arcgis': 使用 ArcGIS 官方原生 VectorTileLayer 渲染。
    * 注意：3D SceneView 模式下将自适应降级使用 'arcgis' 原生模式进行球面贴地渲染。
    * @default 'maplibre'
    */
-  engine?: 'maplibre' | 'arcgis'
+  engine?: MvtEngineType
+
+  /**
+   * Mapbox Access Token（当 engine 为 'mapbox' 时使用，也可在外部配置 window.mapboxgl.accessToken）
+   */
+  accessToken?: string
+
+  /**
+   * 自定义地图引擎库实例（可选，例如直接传入 import mapboxgl from 'mapbox-gl' 或 maplibregl 对象）
+   */
+  engineInstance?: any
 
   /**
    * 矢量瓦片样式
@@ -86,7 +99,7 @@ export interface MvtRendererProps {
   listMode?: 'show' | 'hide' | 'hide-children'
 
   /**
-   * MapLibre 模式下指定插入在哪个图层之前（对应 map.addLayer(layer, beforeId)）
+   * MapLibre / Mapbox 模式下指定插入在哪个图层之前（对应 map.addLayer(layer, beforeId)）
    */
   beforeId?: string
 
@@ -99,6 +112,16 @@ export interface MvtRendererProps {
    * 可选：显式传入当前 ArcGIS MapView / SceneView 实例；若不传则自动从父级 inject('view') 获取
    */
   view?: any
+}
+
+/**
+ * 纯 JS/TS 原生 ArcGISMvtLayer 类的初始化配置项
+ */
+export interface ArcGISMvtLayerOptions extends MvtRendererProps {
+  /**
+   * 必须提供的宿主 ArcGIS View 实例（MapView 或 SceneView）
+   */
+  view: any
 }
 
 export interface MaplibreProviderProps {
@@ -115,8 +138,6 @@ export interface MaplibreProviderProps {
   /**
    * 是否自动挂载至 ArcGIS View 的 DOM 层级内部（介于底层画布与顶层 UI 控件之间）
    * @default true
-   * - 默认为 true：自动通过 Teleport 挂载至 .esri-view-root 内部并保持在 .esri-ui 之下，零配置解决 UI 与 Powered by Esri 版权信息被遮挡问题
-   * - 若为 false：保持在当前 Vue 模板位置渲染
    */
   attachToView?: boolean
 }

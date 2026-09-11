@@ -3,27 +3,35 @@ import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import * as reactiveUtils from '@arcgis/core/core/reactiveUtils'
 
-interface SharedMaplibreEntry {
-  map: maplibregl.Map
+export interface SharedEngineOptions {
+  engine?: 'maplibre' | 'mapbox' | 'arcgis'
+  accessToken?: string
+  engineInstance?: any
+  mapOptions?: any
+}
+
+interface SharedEngineEntry {
+  map: any
+  engineType: 'maplibre' | 'mapbox'
   containerEl: HTMLDivElement
   refCount: number
   watchHandle: __esri.WatchHandle | null
   resizeObserver: ResizeObserver | null
   isLoaded: boolean
-  loadCallbacks: Array<(map: maplibregl.Map) => void>
+  loadCallbacks: Array<(map: any) => void>
 }
 
 /**
  * 模块级/全局 View 单例共享池：
- * 以 ArcGIS View 实例作为弱引用键（WeakMap），同一个 View 无论渲染多少个 MvtRenderer 组件，
- * 全局始终严格共享 1 张 Canvas、1 个 MapLibre 实例与 1 个 WebGL 上下文，彻底规避 WebGL 上下文超限。
+ * 以 ArcGIS View 实例作为弱引用键（WeakMap），同一个 View 无论渲染多少个 MvtRenderer / ArcGISMvtLayer，
+ * 全局始终严格共享 1 张 Canvas 画布、1 个引擎实例与 1 个 WebGL 上下文，彻底规避 WebGL 上下文超限崩溃。
  */
-const sharedMaplibrePool = new WeakMap<any, SharedMaplibreEntry>()
+const sharedEnginePool = new WeakMap<any, SharedEngineEntry>()
 
-const MAPLIBRE_BASE_RES = 78271.51696402048
+const MAP_BASE_RES = 78271.51696402048
 
 const resolutionToZoom = (resolution: number) => {
-  const z = Math.log2(MAPLIBRE_BASE_RES / resolution)
+  const z = Math.log2(MAP_BASE_RES / resolution)
   return Math.max(0, Math.min(24, z))
 }
 
@@ -35,13 +43,41 @@ const normalizeLongitude = (targetLon: number, currentLon: number) => {
 }
 
 /**
- * 从单例池中获取或初始化该 View 对应的 MapLibre 实例
+ * 动态加载并解析地图引擎库 (MapLibre GL 或 Mapbox GL)
  */
-export async function acquireSharedMaplibre(
+async function resolveEngineLib(options?: SharedEngineOptions): Promise<any> {
+  if (options?.engineInstance) {
+    return options.engineInstance
+  }
+
+  if (options?.engine === 'mapbox') {
+    if (typeof window !== 'undefined' && (window as any).mapboxgl) {
+      return (window as any).mapboxgl
+    }
+    try {
+      // 使用动态导入执行器，避免在宿主未安装 mapbox-gl 时 Vite 静态分析报 500 错误
+      const dynamicImport = new Function('specifier', 'return import(specifier)')
+      const mod = await dynamicImport('mapbox-gl')
+      return mod.default || mod
+    } catch {
+      throw new Error(
+        '[arcgis-mvt-renderer] 指定了 engine="mapbox"，但当前环境未找到 mapbox-gl 模块。\n' +
+        '请在项目中运行 `pnpm add mapbox-gl`，或通过 `engineInstance` 参数传入 mapboxgl 实例。'
+      )
+    }
+  }
+
+  return maplibregl
+}
+
+/**
+ * 从单例池中获取或初始化该 View 对应的 MapLibre / Mapbox 引擎实例
+ */
+export async function acquireSharedEngine(
   view: any,
-  options?: any
+  options?: SharedEngineOptions
 ): Promise<{
-  map: maplibregl.Map
+  map: any
   release: () => void
 }> {
   if (!view) {
@@ -52,7 +88,7 @@ export async function acquireSharedMaplibre(
     await view.when()
   }
 
-  let entry = sharedMaplibrePool.get(view)
+  let entry = sharedEnginePool.get(view)
 
   if (entry) {
     entry.refCount++
@@ -73,14 +109,21 @@ export async function acquireSharedMaplibre(
     }
   }
 
+  const engineType = options?.engine === 'mapbox' ? 'mapbox' : 'maplibre'
+  const engineLib = await resolveEngineLib(options)
+
+  if (options?.accessToken && engineLib) {
+    engineLib.accessToken = options.accessToken
+  }
+
   // 1. 创建挂载容器
   const containerEl = document.createElement('div')
-  containerEl.className = 'maplibre-provider-view maplibre-shared-singleton'
+  containerEl.className = `mvt-engine-provider-view mvt-shared-singleton mvt-engine-${engineType}`
   containerEl.style.cssText =
     'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;'
 
   const contentEl = document.createElement('div')
-  contentEl.className = 'maplibre-provider-content'
+  contentEl.className = 'mvt-engine-provider-content'
   contentEl.style.cssText = 'width:100%;height:100%;'
   containerEl.appendChild(contentEl)
 
@@ -99,29 +142,14 @@ export async function acquireSharedMaplibre(
   if (root) {
     if (ui && ui.parentElement === root) {
       root.insertBefore(containerEl, ui)
+      ui.style.zIndex = '1'
     } else {
       root.appendChild(containerEl)
     }
-    if (ui) {
-      ui.style.zIndex = '1'
-    }
   }
 
-  // 坐标系检测与警告
-  if (
-    view.spatialReference &&
-    !view.spatialReference.isWebMercator &&
-    view.spatialReference.wkid !== 3857 &&
-    view.spatialReference.wkid !== 102100
-  ) {
-    console.warn(
-      `[arcgis-mvt-renderer] 当前 ArcGIS 视图坐标系为 WKID:${view.spatialReference.wkid}（非 Web 墨卡托 EPSG:3857）。\n` +
-      `MapLibre GL 渲染管线基于 Web 墨卡托构建；若使用自定义投影，建议配置 engine="arcgis"。`
-    )
-  }
-
-  // 3. 初始化 MapLibre GL 实例
-  const map = new maplibregl.Map({
+  // 3. 初始化 Map 实例
+  const map = new engineLib.Map({
     container: contentEl,
     style: {
       version: 8,
@@ -135,79 +163,92 @@ export async function acquireSharedMaplibre(
     canvasContextAttributes: {
       preserveDrawingBuffer: true,
     },
-    ...options,
+    ...options?.mapOptions,
   })
-
-  const syncMap = () => {
-    if (!map || !view?.ready) return
-    if (!view.center || !view.resolution) return
-    if (view.type === '3d') return
-
-    let targetLon = 0
-    let targetLat = 0
-
-    if (view.spatialReference?.isWebMercator && typeof view.center.x === 'number') {
-      targetLon = (view.center.x / 20037508.342789244) * 180
-    } else if (typeof view.center.longitude === 'number') {
-      const currentLon = map.getCenter().lng
-      targetLon = normalizeLongitude(view.center.longitude, currentLon)
-    }
-
-    if (typeof view.center.latitude === 'number') {
-      targetLat = Math.max(-85.0511, Math.min(85.0511, view.center.latitude))
-    }
-
-    map.jumpTo({
-      center: [targetLon, targetLat],
-      zoom: resolutionToZoom(view.resolution),
-      bearing: -(view.rotation ?? 0),
-    })
-  }
-
-  // 4. 视角同步监听
-  const watchHandle = reactiveUtils.watch(
-    () => [view.center?.x, view.center?.y, view.resolution, view.rotation],
-    () => {
-      syncMap()
-    },
-    { sync: true }
-  )
-
-  // 5. 尺寸响应式监听
-  const resizeObserver = new ResizeObserver(() => {
-    if (map) {
-      map.resize()
-    }
-  })
-  resizeObserver.observe(containerEl)
 
   entry = {
     map,
+    engineType,
     containerEl,
     refCount: 1,
-    watchHandle,
-    resizeObserver,
+    watchHandle: null,
+    resizeObserver: null,
     isLoaded: false,
     loadCallbacks: [],
   }
+  sharedEnginePool.set(view, entry)
 
-  sharedMaplibrePool.set(view, entry)
+  // 4. 视角同步函数
+  const syncMap = () => {
+    if (!map || !view.center || !view.resolution) return
+    const currentCenter = map.getCenter ? map.getCenter() : null
+    const currentLon = currentCenter ? currentCenter.lng : view.center.longitude
+    const normLon = normalizeLongitude(view.center.longitude, currentLon)
 
+    map.jumpTo({
+      center: [normLon, view.center.latitude],
+      zoom: resolutionToZoom(view.resolution),
+      bearing: -view.rotation,
+    })
+  }
+
+  // 5. 监听地图加载完成
+  const currentEntry = entry
   return new Promise((resolve) => {
     map.once('load', () => {
-      if (entry) {
-        entry.isLoaded = true
-        syncMap()
-        const release = createRelease(view, entry)
-        resolve({ map, release })
-        entry.loadCallbacks.forEach((cb) => cb(map))
-        entry.loadCallbacks = []
+      syncMap()
+
+      // 实时视角监听
+      currentEntry.watchHandle = reactiveUtils.watch(
+        () => [
+          view.center?.x,
+          view.center?.y,
+          view.resolution,
+          view.rotation,
+        ],
+        () => {
+          syncMap()
+        },
+        { sync: true }
+      )
+
+      // 视口尺寸监听 (标准 ResizeObserver，零额外依赖)
+      if (typeof ResizeObserver !== 'undefined') {
+        currentEntry.resizeObserver = new ResizeObserver(() => {
+          if (map) map.resize()
+        })
+        currentEntry.resizeObserver.observe(containerEl)
       }
+
+      currentEntry.isLoaded = true
+      currentEntry.loadCallbacks.forEach((cb) => cb(map))
+      currentEntry.loadCallbacks = []
+
+      resolve({
+        map,
+        release: createRelease(view, currentEntry),
+      })
     })
   })
 }
 
-function createRelease(view: any, entry: SharedMaplibreEntry) {
+/**
+ * 保持向后兼容的原有导出命名
+ */
+export async function acquireSharedMaplibre(
+  view: any,
+  options?: any
+): Promise<{
+  map: any
+  release: () => void
+}> {
+  return acquireSharedEngine(view, { engine: 'maplibre', ...options })
+}
+
+/**
+ * 引用计数回收销毁
+ */
+function createRelease(view: any, entry: SharedEngineEntry) {
   let released = false
   return () => {
     if (released) return
@@ -215,18 +256,19 @@ function createRelease(view: any, entry: SharedMaplibreEntry) {
     entry.refCount--
 
     if (entry.refCount <= 0) {
+      sharedEnginePool.delete(view)
       entry.watchHandle?.remove()
       entry.resizeObserver?.disconnect()
+
       try {
-        entry.map.remove()
-      } catch {
-        // ignore
+        entry.map?.remove()
+      } catch (e) {
+        console.warn('[arcgis-mvt-renderer] 销毁共享引擎实例时提示:', e)
       }
-      entry.containerEl.remove()
-      if (view?.ui?.container) {
-        view.ui.container.style.zIndex = ''
+
+      if (entry.containerEl?.parentElement) {
+        entry.containerEl.parentElement.removeChild(entry.containerEl)
       }
-      sharedMaplibrePool.delete(view)
     }
   }
 }

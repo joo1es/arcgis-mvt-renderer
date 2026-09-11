@@ -2,6 +2,7 @@
 import { ref, shallowRef, computed, onMounted, watch, nextTick } from 'vue'
 import Map from '@arcgis/core/Map'
 import MapView from '@arcgis/core/views/MapView'
+import SceneView from '@arcgis/core/views/SceneView'
 import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer'
 import Graphic from '@arcgis/core/Graphic'
 import Point from '@arcgis/core/geometry/Point'
@@ -357,8 +358,6 @@ const init3DView = async () => {
     mainMap.add(gLayer)
   }
 
-  // 按需动态加载 SceneView 模块
-  const { default: SceneView } = await import('@arcgis/core/views/SceneView')
 
   const scene = new SceneView({
     container: mainMapRef.value,

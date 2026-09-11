@@ -2,8 +2,7 @@
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
-import { ref, shallowRef, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { useElementSize } from '@vueuse/core'
+import { ref, shallowRef, onMounted, onUnmounted, nextTick } from 'vue'
 import * as reactiveUtils from '@arcgis/core/core/reactiveUtils'
 import { provideMaplibreContext, useArcGISView } from '../composables/useMvtContext'
 import type { MaplibreProviderProps } from '../types'
@@ -171,17 +170,23 @@ onMounted(async () => {
 
     loaded.value = true
   })
-})
 
-// 监听容器尺寸调整，触发 MapLibre resize
-const { width, height } = useElementSize(mapRef)
-watch([width, height], () => {
-  if (map.value) {
-    map.value.resize()
+  // 监听容器尺寸调整，触发 MapLibre resize
+  if (mapRef.value && typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(() => {
+      if (map.value) {
+        map.value.resize()
+      }
+    })
+    resizeObserver.observe(mapRef.value)
   }
 })
 
+let resizeObserver: ResizeObserver | null = null
+
 onUnmounted(() => {
+  resizeObserver?.disconnect()
+  resizeObserver = null
   watchHandle?.remove()
   if (map.value) {
     map.value.remove()

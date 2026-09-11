@@ -1,7 +1,8 @@
 # arcgis-mvt-renderer
 
 <p align="center">
-  <b>Seamless MVT (Mapbox Vector Tile) rendering integration between ArcGIS Maps SDK and MapLibre GL for Vue 3.</b>
+  <b>Seamless MVT (Mapbox Vector Tile) rendering integration between ArcGIS Maps SDK and MapLibre GL / Mapbox GL.</b><br>
+  <i>Use as a pure TypeScript/JS Class (Vanilla JS, React, Angular) or as Vue 3 Components. Zero runtime dependencies.</i>
 </p>
 
 <p align="center">
@@ -11,9 +12,10 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/arcgis-mvt-renderer"><img src="https://img.shields.io/npm/v/arcgis-mvt-renderer.svg" alt="npm version"></a>
   <a href="https://joo1es.github.io/arcgis-mvt-renderer/"><img src="https://img.shields.io/badge/Live%20Demo-Online-success?style=flat&logo=google-chrome" alt="Live Demo"></a>
-  <a href="https://github.com/vuejs/core"><img src="https://img.shields.io/badge/vue-3.x-brightgreen.svg" alt="vue 3"></a>
   <a href="https://developers.arcgis.com/javascript/"><img src="https://img.shields.io/badge/@arcgis/core-4.x-blue.svg" alt="arcgis"></a>
   <a href="https://maplibre.org/"><img src="https://img.shields.io/badge/maplibre--gl-3.x%20--%205.x-teal.svg" alt="maplibre"></a>
+  <a href="https://www.mapbox.com/"><img src="https://img.shields.io/badge/mapbox--gl-supported-black.svg" alt="mapbox"></a>
+  <a href="https://github.com/vuejs/core"><img src="https://img.shields.io/badge/vue-3.x-brightgreen.svg" alt="vue 3"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/npm/l/arcgis-mvt-renderer.svg" alt="license"></a>
 </p>
 
@@ -23,31 +25,33 @@
 
 ## 💡 Why `arcgis-mvt-renderer`?
 
-When working with third-party or custom MVT (Mapbox Vector Tile) services in **ArcGIS Maps SDK for JavaScript**, you may encounter a well-known issue: **solid polygon fills (`type: "fill"`) fail to render or become completely invisible**, while outline strokes (`type: "line"`) render fine.
+When working with third-party or custom MVT (Mapbox Vector Tile) services in **ArcGIS Maps SDK for JavaScript**, you will encounter a fatal issue: **solid polygon fills (`type: "fill"`) fail to render or become completely invisible**, while outline strokes (`type: "line"`) render fine.
 
 ### Root Cause
-- **MVT 2.1 Specification**: According to the standard, in the screen tile grid (where Y points downwards), exterior polygon rings **must be Clockwise (CW)**, and interior rings (holes) must be **Counter-Clockwise (CCW)**.
-- **ArcGIS Strictness vs. MapLibre Tolerance**: Many GIS cut-tile pipelines (e.g., PostGIS `ST_AsMVT` without `ST_ForcePolygonCW`, custom Python/Go tile scripts) export exterior rings with counter-clockwise orientation (standard OGC/Cartesian convention). ArcGIS's WebGL tessellator strictly drops CCW rings as "unbounded holes," generating zero triangles.
-- **The Solution**: MapLibre GL uses the robust `earcut` polygon tessellation algorithm, which effortlessly handles non-standard winding orders and self-intersecting polygons.
+- **MVT 2.1 Specification vs. ArcGIS Strictness**: In screen tile pixel coordinates (where Y points downwards), exterior polygon rings **must be Clockwise (CW)**, and interior rings (holes) must be **Counter-Clockwise (CCW)**.
+- **The Winding Order Bug**: Most GIS cut-tile pipelines (PostGIS `ST_AsMVT`, GeoServer, custom Python/Go tile scripts) export exterior rings with counter-clockwise orientation (standard OGC Cartesian convention). ArcGIS's WebGL tessellator strictly treats CCW exterior rings as "unbounded interior holes," generating **zero triangles (`triangleCount: 0`)** — rendering solid fills completely invisible!
+- **The Solution**: MapLibre GL and Mapbox GL use the robust `earcut` polygon tessellation algorithm, which effortlessly handles arbitrary winding orders and self-intersecting polygons.
 
 `arcgis-mvt-renderer` bridges both worlds:
-1. **Pass standard `:style`**: Accepts native Mapbox Style Spec v8 objects or remote `style.json` URLs.
-2. **Zero Nesting & Shared WebGL Context**: Use `<MvtRenderer>` directly. Multiple instances on the same ArcGIS view automatically share **a single MapLibre instance and 1 WebGL canvas**, completely eliminating WebGL context limit issues!
-3. **Dual-Mode Rendering (`engine`)**: Defaults to `engine="maplibre"` for robust polygon rendering; switch to `engine="arcgis"` anytime for native mode or 3D digital globe (`SceneView`) spherical draping.
-4. **Completely Decoupled**: Zero proprietary wrapper dependencies. Native support for `@arcgis/core`, `@vuesri/core`, or vanilla Vue 3 projects.
+1. **Pure TypeScript/JS Class by Default**: Export `ArcGISMvtLayer` directly. Works in **Vanilla JS, React, Angular, Vue, or any web framework**.
+2. **First-Class Vue 3 Support**: Optional `<MvtRenderer>` and `<MaplibreProvider>` components with full reactive bindings.
+3. **Multi-Engine Support (`engine`)**: Supports `engine="maplibre"` (default) or `engine="mapbox"`, plus fallback `engine="arcgis"`.
+4. **Shared WebGL Context Pool**: Multiple instances on the same ArcGIS view automatically share **a single engine instance and 1 WebGL canvas**, completely eliminating WebGL context limit issues (8~16 context browser limit)!
+5. **Zero Runtime Dependencies**: Completely free of third-party runtime dependencies.
 
 ---
 
 ## 🌟 Features
 
+- 💎 **Framework-Agnostic Core**: Default export is the pure JS/TS class `ArcGISMvtLayer`. Zero UI framework lock-in.
+- ⚡ **Multi-Engine Support (`engine`)**:
+  - `engine="maplibre"` (Default): High-performance open-source MapLibre GL pipeline.
+  - `engine="mapbox"`: Use Mapbox GL JS with full Style Spec and 3D globe capabilities.
+  - `engine="arcgis"`: Native `VectorTileLayer` mode.
+- 🛡️ **Singleton WebGL Context Pool**: Multiple layers on the same view share **1 canvas and 1 WebGL context** through automatic reference counting.
+- 🔄 **Real-Time Camera Synchronization**: Coordinates `center`, `zoom`, `resolution`, and `bearing` between ArcGIS MapView and MapLibre/Mapbox.
 - 🎯 **Standard `:style` Prop**: Pass standard Mapbox Style Spec v8 JSON objects or remote `style.json` URLs without custom transformations.
-- ⚡ **Single-Component Ergonomics (`engine`)**:
-  - `engine="maplibre"` (Default): Fixes polygon fill rendering issues using high-performance MapLibre GL, with automatic camera synchronization and shared WebGL context.
-  - `engine="arcgis"`: Uses native `VectorTileLayer` for standard ArcGIS layers or 3D `SceneView` spherical draping.
-- 🛡️ **Singleton WebGL Context Pool**: Multiple `<MvtRenderer>` components on the same view share **1 canvas and 1 WebGL context** through automatic reference counting.
-- 🔄 **Real-Time Camera Synchronization**: Coordinates `center`, `zoom`, `resolution`, and `bearing` between ArcGIS MapView and MapLibre.
-- 🧩 **Zero Framework Lock-in**: Automatically discovers ArcGIS MapView from props, `inject('view')`, or `@vuesri/core`, without coupling to any specific UI library.
-- 📦 **Full TypeScript Support**: Comprehensive `.d.ts` declarations included.
+- 📦 **0 Runtime Dependencies & Full TypeScript Support**: Comprehensive `.d.ts` declarations included.
 
 ---
 
@@ -75,12 +79,47 @@ pnpm add vue maplibre-gl @arcgis/core
 
 ## 🚀 Quick Start
 
-### 1. Global Registration (Optional)
+### Option 1: Pure TypeScript / JavaScript Class (Default Export — React, Angular, Vanilla TS)
+
+Zero Vue dependency! Use `ArcGISMvtLayer` directly in any web application:
+
+```typescript
+import ArcGISMvtLayer from 'arcgis-mvt-renderer'
+// or: import { ArcGISMvtLayer } from 'arcgis-mvt-renderer'
+import MapView from '@arcgis/core/views/MapView'
+import Map from '@arcgis/core/Map'
+
+const view = new MapView({
+  container: 'viewDiv',
+  map: new Map({ basemap: 'satellite' }),
+  center: [114.3, 30.5],
+  zoom: 10
+})
+
+// Initialize the MVT layer and mount onto ArcGIS MapView
+const mvtLayer = new ArcGISMvtLayer({
+  view: view,
+  style: 'https://your-server.com/v1/style.json',
+  engine: 'maplibre', // or 'mapbox'
+  opacity: 0.8,
+  visible: true,
+})
+
+// Programmatic Imperative API:
+await mvtLayer.setStyle(anotherStyleObj)
+mvtLayer.setOpacity(0.5)
+mvtLayer.setVisible(false)
+mvtLayer.destroy() // Releases layer & automatically recycles WebGL context
+```
+
+### Option 2: Vue 3 Components
+
+#### Global Registration (Optional)
 
 ```typescript
 // main.ts
 import { createApp } from 'vue'
-import ArcGISMvtRenderer from 'arcgis-mvt-renderer'
+import { plugin as ArcGISMvtRenderer } from 'arcgis-mvt-renderer'
 import App from './App.vue'
 
 const app = createApp(App)
@@ -88,9 +127,7 @@ app.use(ArcGISMvtRenderer)
 app.mount('#app')
 ```
 
-### 2. Usage Examples
-
-#### Mode A: Single Component (Recommended — Default `engine="maplibre"`)
+#### Single Component Usage (Recommended — Default `engine="maplibre"`)
 
 Simply pass `:view` and `:style`. Multiple components on the same view automatically share a single WebGL canvas and context:
 
@@ -236,11 +273,15 @@ onMounted(() => {
 
 ## 📖 API Reference
 
-### `<MvtRenderer>` (Fully Aligned with ArcGIS `VectorTileLayer`)
+### `ArcGISMvtLayer` (Pure JS Class) & `<MvtRenderer>` (Vue Component)
 
-| Prop | Type | Default | Description |
+Both the pure JS class and Vue component share identical property options:
+
+| Prop / Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `engine` | `'maplibre' \| 'arcgis'` | `'maplibre'` | Rendering engine mode. Multiple instances on the same view automatically share a single WebGL context. Auto-falls back to `'arcgis'` in 3D `SceneView`. |
+| `engine` | `'maplibre' \| 'mapbox' \| 'arcgis'` | `'maplibre'` | Rendering engine mode. Multiple instances on the same view automatically share a single WebGL context. Auto-falls back to `'arcgis'` in 3D `SceneView`. |
+| `accessToken` | `string` | `undefined` | Mapbox Access Token (when `engine="mapbox"` is used). |
+| `engineInstance` | `any` | `undefined` | Optional direct reference to `maplibregl` or `mapboxgl` library module. |
 | `style` | `string \| Record<string, any>` | `undefined` | Standard Mapbox/ArcGIS Style Spec v8 object, JSON string, or remote `style.json` URL. Mutually interchangeable with `url`. |
 | `url` | `string` | `undefined` | Vector tile service URL or style JSON URL, **fully aligned with ArcGIS `VectorTileLayer.url`**. Supports `{z}/{x}/{y}` tile template strings. |
 | `opacity` | `number` | `1` | Layer opacity (`0 ~ 1`), **fully aligned with ArcGIS `VectorTileLayer.opacity`**. Enables smooth fading without flickering or reloading tiles. |
