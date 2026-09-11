@@ -15,8 +15,19 @@ import '@arcgis/core/assets/esri/themes/light/main.css'
 import { MaplibreProvider, MvtRenderer } from '../src'
 import { PRESETS } from './sampleStyle'
 
-// 国际化语言状态
-const lang = ref<'zh' | 'en'>('zh')
+// 根据浏览器系统语言自适应默认语言 (非中文环境一律默认英文)
+const detectBrowserLang = (): 'zh' | 'en' => {
+  if (typeof navigator !== 'undefined' && navigator.language) {
+    const navLang = navigator.language.toLowerCase()
+    if (navLang.startsWith('zh')) {
+      return 'zh'
+    }
+  }
+  return 'en'
+}
+
+// 国际化语言状态 (默认由浏览器语言决定)
+const lang = ref<'zh' | 'en'>(detectBrowserLang())
 
 // 多语言字典
 const i18n = {
