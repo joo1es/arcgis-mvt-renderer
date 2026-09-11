@@ -41,7 +41,19 @@ const MAPLIBRE_BASE_RES = 78271.51696402048
  * ArcGIS resolution 转换为 MapLibre zoom
  */
 const resolutionToZoom = (resolution: number) => {
-  return Math.log2(MAPLIBRE_BASE_RES / resolution)
+  const z = Math.log2(MAPLIBRE_BASE_RES / resolution)
+  // MapLibre 支持的合法 zoom 范围限制为 [0, 24]
+  return Math.max(0, Math.min(24, z))
+}
+
+/**
+ * 经度连续性处理：保持 target 与 current 在同一周期，避免跨越 ±180° 日界线拖拽时跳变
+ */
+const normalizeLongitude = (targetLon: number, currentLon: number) => {
+  let lon = targetLon
+  while (lon - currentLon > 180) lon -= 360
+  while (lon - currentLon < -180) lon += 360
+  return lon
 }
 
 /**
@@ -51,8 +63,29 @@ const syncMap = () => {
   if (!map.value || !view?.ready) return
   if (!view.center || !view.resolution) return
 
+  // 3D SceneView 保护 (SceneView 由 ArcGIS 原生 VectorTileLayer 处理)
+  if (view.type === '3d') {
+    return
+  }
+
+  let targetLon = 0
+  let targetLat = 0
+
+  if (view.spatialReference?.isWebMercator && typeof view.center.x === 'number') {
+    // Web Mercator (3857) 模式下直接由 x 线性计算连续经度，即使横向拖拽跨越多个世界也不会被强制截断折返
+    targetLon = (view.center.x / 20037508.342789244) * 180
+  } else if (typeof view.center.longitude === 'number') {
+    const currentLon = map.value.getCenter().lng
+    targetLon = normalizeLongitude(view.center.longitude, currentLon)
+  }
+
+  if (typeof view.center.latitude === 'number') {
+    // Web Mercator 纬度数学有效投影范围截断 [-85.0511, 85.0511]
+    targetLat = Math.max(-85.0511, Math.min(85.0511, view.center.latitude))
+  }
+
   map.value.jumpTo({
-    center: [view.center.longitude || 0, view.center.latitude || 0],
+    center: [targetLon, targetLat],
     zoom: resolutionToZoom(view.resolution),
     bearing: -(view.rotation ?? 0),
   })
@@ -77,6 +110,7 @@ onMounted(async () => {
     attributionControl: false,
     fadeDuration: 0,
     interactive: false,
+    renderWorldCopies: true,
     canvasContextAttributes: {
       preserveDrawingBuffer: true,
     },
@@ -90,8 +124,8 @@ onMounted(async () => {
     // 监听 ArcGIS View 视角变动，实时同步给 MapLibre
     watchHandle = reactiveUtils.watch(
       () => [
-        view.center?.longitude,
-        view.center?.latitude,
+        view.center?.x,
+        view.center?.y,
         view.resolution,
         view.rotation,
       ],

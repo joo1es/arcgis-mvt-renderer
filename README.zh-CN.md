@@ -187,21 +187,42 @@ import { MaplibreProvider, MvtRenderer } from 'arcgis-mvt-renderer'
 </script>
 ```
 
-#### 模式三：ArcGIS 原生模式（不包裹 Provider）
+#### 模式三：ArcGIS 原生模式与 3D 数字地球 (`SceneView`)
 
-当在 `<MaplibreProvider>` 外部独立使用时，`<MvtRenderer>` 自动降级并挂载原生 `@arcgis/core/layers/VectorTileLayer`：
+当在 `<MaplibreProvider>` 外部独立使用，或在 3D 数字地球 (`SceneView`) 中使用时，`<MvtRenderer>` 自动挂载原生 `@arcgis/core/layers/VectorTileLayer`，将矢量瓦片自然贴合在 3D 地球曲面上：
 
 ```vue
 <template>
-  <VaMapView :default-options="mapOptions">
-    <!-- 自动渲染原生 VectorTileLayer 并参与图层排序 -->
+  <div ref="sceneContainer" class="map-view">
+    <!-- 3D 视角下原生贴地渲染 -->
     <MvtRenderer
+      :view="sceneView"
       :style="vectorTileStyle"
-      :index="1"
     />
-  </VaMapView>
+  </div>
 </template>
+
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import SceneView from '@arcgis/core/views/SceneView'
+import Map from '@arcgis/core/Map'
+import { MvtRenderer } from 'arcgis-mvt-renderer'
+
+const sceneContainer = ref<HTMLDivElement>()
+const sceneView = ref<SceneView>()
+
+onMounted(() => {
+  sceneView.value = new SceneView({
+    container: sceneContainer.value,
+    map: new Map({ basemap: 'satellite' }),
+    camera: { position: [105, 25, 8000000], tilt: 45 }
+  })
+})
+</script>
 ```
+
+> **💡 提示（缩放约束建议）**：
+> 在 2D `MapView` 中搭配 `MaplibreProvider` 使用时，建议为 MapView 配置 `constraints: { minZoom: 2, maxZoom: 18, snapToZoom: false }`，以防止无限拉远至尺度极端时触发墨卡托切片截断。
 
 ---
 

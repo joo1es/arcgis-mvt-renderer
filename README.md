@@ -187,21 +187,42 @@ import { MaplibreProvider, MvtRenderer } from 'arcgis-mvt-renderer'
 </script>
 ```
 
-#### Mode C: Native ArcGIS Mode (Without Provider)
+#### Mode C: Native ArcGIS Mode & 3D Globe (`SceneView`)
 
-When rendered outside `<MaplibreProvider>`, `<MvtRenderer>` automatically falls back to native `@arcgis/core/layers/VectorTileLayer`:
+When used outside `<MaplibreProvider>`, or in a 3D digital globe (`SceneView`), `<MvtRenderer>` automatically mounts native `@arcgis/core/layers/VectorTileLayer`, seamlessly draping vector tiles onto the 3D spherical globe surface:
 
 ```vue
 <template>
-  <VaMapView :default-options="mapOptions">
-    <!-- Directly mounts an ArcGIS VectorTileLayer -->
+  <div ref="sceneContainer" class="map-view">
+    <!-- Draped naturally on the 3D globe surface -->
     <MvtRenderer
+      :view="sceneView"
       :style="vectorTileStyle"
-      :index="1"
     />
-  </VaMapView>
+  </div>
 </template>
+
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import SceneView from '@arcgis/core/views/SceneView'
+import Map from '@arcgis/core/Map'
+import { MvtRenderer } from 'arcgis-mvt-renderer'
+
+const sceneContainer = ref<HTMLDivElement>()
+const sceneView = ref<SceneView>()
+
+onMounted(() => {
+  sceneView.value = new SceneView({
+    container: sceneContainer.value,
+    map: new Map({ basemap: 'satellite' }),
+    camera: { position: [105, 25, 8000000], tilt: 45 }
+  })
+})
+</script>
 ```
+
+> **💡 Best Practice (Zoom Constraints)**:
+> In 2D `MapView` paired with `MaplibreProvider`, we recommend configuring `constraints: { minZoom: 2, maxZoom: 18, snapToZoom: false }` on the host MapView to prevent over-zooming out beyond valid Mercator projection tile scales.
 
 ---
 

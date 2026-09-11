@@ -23,7 +23,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:demo": "vite build --config vite.config.demo.ts",
+    "build:demo": "node --max-old-space-size=8192 ./node_modules/vite/bin/vite.js build --config vite.config.demo.ts",
     "preview:demo": "vite preview --config vite.config.demo.ts"
   },
   "keywords": [

@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, shallowRef, computed, onMounted, watch } from 'vue'
+import { ref, shallowRef, computed, onMounted, watch, nextTick } from 'vue'
 import Map from '@arcgis/core/Map'
 import MapView from '@arcgis/core/views/MapView'
 import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer'
@@ -33,11 +33,17 @@ const lang = ref<'zh' | 'en'>(detectBrowserLang())
 const i18n = {
   zh: {
     title: 'arcgis-mvt-renderer',
-    subtitle: 'Z-Index 与多引擎交互式演练场',
+    subtitle: 'Z-Index 与 2D/3D 多引擎交互式演练场',
     github: 'GitHub ⭐️',
+    dimTitle: '视口维度 (2D / 3D)',
+    dim2D: '🗺️ 2D 平面地图',
+    dim3D: '🌐 3D 数字地球',
+    dim3dNotice: '💡 3D 数字地球需要将矢量瓦片贴合于三维曲面，由 ArcGIS SceneView 原生 VectorTileLayer 贴地渲染；MapLibre 属于 2D 平面 WebGL 引擎。',
+    tiltHint: '操作提示：按住鼠标右键或按住 Ctrl+鼠标拖拽，可自由倾斜、俯仰和旋转 3D 地球视角。',
     engineTitle: '渲染引擎模式',
     maplibreMode: '🟢 MapLibre 模式',
     arcgisMode: '🔵 ArcGIS 原生模式',
+    maplibreDisabledIn3D: '3D SceneView 模式下需使用 ArcGIS 原生模式贴地渲染',
     coreTag: '🎯 核心',
     zIndexTitle: 'Z-Index 层级匹配演示',
     topLayer: '顶层：ArcGIS 标绘与注记',
@@ -63,11 +69,17 @@ const i18n = {
   },
   en: {
     title: 'arcgis-mvt-renderer',
-    subtitle: 'Z-Index & Multi-Engine Playground',
+    subtitle: 'Z-Index & 2D/3D Multi-Engine Playground',
     github: 'GitHub ⭐️',
+    dimTitle: 'View Dimension (2D / 3D)',
+    dim2D: '🗺️ 2D Map (MapView)',
+    dim3D: '🌐 3D Globe (SceneView)',
+    dim3dNotice: '💡 3D Globe requires spherical draping provided natively by ArcGIS SceneView VectorTileLayer; MapLibre GL is a 2D planar WebGL engine.',
+    tiltHint: 'Controls: Right-click drag or Ctrl+drag to tilt and rotate the 3D globe.',
     engineTitle: 'Rendering Engine',
     maplibreMode: '🟢 MapLibre Mode',
     arcgisMode: '🔵 ArcGIS Native Mode',
+    maplibreDisabledIn3D: 'MapLibre 2D canvas is not available in 3D SceneView. Native mode is active.',
     coreTag: '🎯 Core',
     zIndexTitle: 'Z-Index Layer Stacking Demo',
     topLayer: 'Top: ArcGIS Graphics & Pins',
@@ -95,10 +107,13 @@ const i18n = {
 
 const t = computed(() => i18n[lang.value])
 
+// 视口空间维度: 2D 平面 (MapView) 或 3D 数字地球 (SceneView)
+const viewDimension = ref<'2d' | '3d'>('2d')
+
 // 地图 DOM 节点与实例
 const mainMapRef = ref<HTMLDivElement>()
 const topMapRef = ref<HTMLDivElement>()
-const mainView = shallowRef<MapView | null>(null)
+const mainView = shallowRef<MapView | SceneView | null>(null)
 const topView = shallowRef<MapView | null>(null)
 
 // 标绘图层
@@ -209,7 +224,29 @@ const buildDemoGraphics = () => {
   return graphics
 }
 
-onMounted(async () => {
+// 清理旧视图实例
+const cleanupViews = () => {
+  if (topView.value) {
+    try {
+      topView.value.destroy()
+    } catch {
+      // ignore
+    }
+    topView.value = null
+  }
+  if (mainView.value) {
+    try {
+      mainView.value.destroy()
+    } catch {
+      // ignore
+    }
+    mainView.value = null
+  }
+}
+
+// 初始化 2D MapView 体系 (包含底层底图与顶层透明夹心 View)
+const init2DViews = async () => {
+  cleanupViews()
   if (!mainMapRef.value || !topMapRef.value) return
 
   // 1. 创建底层主地图 (包含底图)
@@ -217,21 +254,23 @@ onMounted(async () => {
     basemap: selectedBasemap.value,
   })
 
+  // 约束 minZoom: 2, maxZoom: 18，避免过度拉远导致投影尺度折返截断
   const view = new MapView({
     container: mainMapRef.value,
     map: mainMap,
     center: activePreset.value.center,
     zoom: activePreset.value.zoom,
     constraints: {
+      minZoom: 2,
+      maxZoom: 18,
       snapToZoom: false,
     },
   })
 
-  // 必须等待主地图就绪，获取真实的 spatialReference 和初始 viewpoint
   await view.when()
   mainView.value = view
 
-  // 关键：全面使用 reactiveUtils.watch 代替已弃用的 view.watch()，避免 4.32+ 废弃警告
+  // 视角监控
   reactiveUtils.watch(
     () => [view.center?.longitude, view.center?.latitude, view.zoom],
     ([lon, lat, z]) => {
@@ -251,7 +290,7 @@ onMounted(async () => {
   })
   graphicsLayer.value = gLayer
 
-  // 3. 创建顶层透明 MapView (必须完全继承主地图的 spatialReference 与初始 viewpoint)
+  // 3. 创建顶层透明 MapView (用于三层夹心架构)
   const topMap = new Map()
   const tView = new MapView({
     container: topMapRef.value,
@@ -261,6 +300,8 @@ onMounted(async () => {
     alphaCompositingEnabled: true,
     ui: { components: [] },
     constraints: {
+      minZoom: 2,
+      maxZoom: 18,
       snapToZoom: false,
     },
   })
@@ -272,12 +313,11 @@ onMounted(async () => {
   await tView.when()
   topView.value = tView
 
-  // 确保初始 viewpoint 绝对对齐
   if (view.viewpoint) {
     tView.viewpoint = view.viewpoint.clone()
   }
 
-  // 视角强同步：通过 viewpoint 整体克隆同步，保证平移、缩放、旋转完全一致
+  // 视角强同步
   reactiveUtils.watch(
     () => view.viewpoint,
     (vp) => {
@@ -289,14 +329,108 @@ onMounted(async () => {
   )
 
   updateLayerPlacement()
+}
+
+// 初始化 3D SceneView 数字地球
+const init3DView = async () => {
+  cleanupViews()
+  if (!mainMapRef.value) return
+
+  const mainMap = new Map({
+    basemap: selectedBasemap.value,
+  })
+
+  // 标绘图层直接加到 3D 地图中
+  const gLayer = new GraphicsLayer({
+    graphics: buildDemoGraphics(),
+  })
+  graphicsLayer.value = gLayer
+  if (showTopGraphics.value) {
+    mainMap.add(gLayer)
+  }
+
+  // 按需动态加载 SceneView 模块
+  const { default: SceneView } = await import('@arcgis/core/views/SceneView')
+
+  const scene = new SceneView({
+    container: mainMapRef.value,
+    map: mainMap,
+    camera: {
+      position: {
+        longitude: activePreset.value.center[0],
+        latitude: activePreset.value.center[1] - 12,
+        z: 6000000,
+      },
+      tilt: 45,
+      heading: 0,
+    },
+    qualityProfile: 'medium',
+    environment: {
+      atmosphere: { quality: 'high' },
+      lighting: { directShadowsEnabled: false },
+    },
+  })
+
+  await scene.when()
+  mainView.value = scene
+
+  reactiveUtils.watch(
+    () => [scene.center?.longitude, scene.center?.latitude, scene.zoom],
+    ([lon, lat, z]) => {
+      if (typeof lon === 'number' && typeof lat === 'number') {
+        centerInfo.value = `${lon.toFixed(4)}, ${lat.toFixed(4)}`
+      }
+      if (typeof z === 'number') {
+        zoomInfo.value = z.toFixed(2)
+      }
+    },
+    { initial: true }
+  )
+}
+
+// 切换视口维度 (2D / 3D)
+const setDimension = async (dim: '2d' | '3d') => {
+  if (viewDimension.value === dim) return
+  viewDimension.value = dim
+
+  if (dim === '3d') {
+    currentMode.value = 'arcgis'
+    await nextTick()
+    await init3DView()
+  } else {
+    await nextTick()
+    await init2DViews()
+  }
+}
+
+// 切换引擎模式
+const setEngineMode = (mode: 'maplibre' | 'arcgis') => {
+  if (viewDimension.value === '3d' && mode === 'maplibre') {
+    return
+  }
+  currentMode.value = mode
+}
+
+onMounted(async () => {
+  await init2DViews()
 })
 
-// 更新标绘图层应该放置在哪个 MapView
+// 更新标绘图层应该放置在哪个 MapView / SceneView
 const updateLayerPlacement = () => {
   const gLayer = graphicsLayer.value
   const mView = mainView.value
+  if (!gLayer || !mView?.map) return
+
+  if (viewDimension.value === '3d') {
+    mView.map.remove(gLayer)
+    if (showTopGraphics.value) {
+      mView.map.add(gLayer)
+    }
+    return
+  }
+
   const tView = topView.value
-  if (!gLayer || !mView?.map || !tView?.map) return
+  if (!tView?.map) return
 
   mView.map.remove(gLayer)
   tView.map.remove(gLayer)
@@ -323,10 +457,18 @@ const handleSelectPreset = (idx: number) => {
   const preset = PRESETS[idx]
   customTileUrl.value = preset.tileUrl || ''
   if (mainView.value) {
-    mainView.value.goTo({
-      center: preset.center,
-      zoom: preset.zoom,
-    })
+    if (viewDimension.value === '3d') {
+      mainView.value.goTo({
+        target: preset.center,
+        zoom: Math.max(3, preset.zoom),
+        tilt: 45,
+      })
+    } else {
+      mainView.value.goTo({
+        center: preset.center,
+        zoom: preset.zoom,
+      })
+    }
   }
 }
 
@@ -344,7 +486,7 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
     <div ref="mainMapRef" class="map-view-surface z-bottom" />
 
     <MaplibreProvider
-      v-if="currentMode === 'maplibre' && mainView"
+      v-if="viewDimension === '2d' && currentMode === 'maplibre' && mainView"
       :view="mainView"
       class="z-middle"
     >
@@ -355,7 +497,7 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
     </MaplibreProvider>
 
     <MvtRenderer
-      v-else-if="currentMode === 'arcgis' && mainView"
+      v-else-if="(currentMode === 'arcgis' || viewDimension === '3d') && mainView"
       :view="mainView"
       :style="activeStyle"
       :tile-url="customTileUrl || undefined"
@@ -363,6 +505,7 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
     />
 
     <div
+      v-if="viewDimension === '2d'"
       ref="topMapRef"
       class="map-view-surface z-top"
       :style="{
@@ -409,19 +552,44 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
       </div>
 
       <div class="panel-body">
+        <!-- 0. 视口空间维度切换 (2D / 3D) -->
+        <div class="form-group">
+          <label class="form-label">{{ t.dimTitle }}</label>
+          <div class="mode-switch">
+            <button
+              :class="['btn-mode', { active: viewDimension === '2d' }]"
+              @click="setDimension('2d')"
+            >
+              {{ t.dim2D }}
+            </button>
+            <button
+              :class="['btn-mode', { active: viewDimension === '3d' }]"
+              @click="setDimension('3d')"
+            >
+              {{ t.dim3D }}
+            </button>
+          </div>
+          <div v-if="viewDimension === '3d'" class="dim-3d-hint">
+            <p>{{ t.dim3dNotice }}</p>
+            <p class="sub-hint">{{ t.tiltHint }}</p>
+          </div>
+        </div>
+
         <!-- 1. 渲染模式切换 -->
         <div class="form-group">
           <label class="form-label">{{ t.engineTitle }}</label>
           <div class="mode-switch">
             <button
               :class="['btn-mode', { active: currentMode === 'maplibre' }]"
-              @click="currentMode = 'maplibre'"
+              :disabled="viewDimension === '3d'"
+              :title="viewDimension === '3d' ? t.maplibreDisabledIn3D : ''"
+              @click="setEngineMode('maplibre')"
             >
               {{ t.maplibreMode }}
             </button>
             <button
               :class="['btn-mode', { active: currentMode === 'arcgis' }]"
-              @click="currentMode = 'arcgis'"
+              @click="setEngineMode('arcgis')"
             >
               {{ t.arcgisMode }}
             </button>
@@ -440,7 +608,7 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
             <div
               :class="[
                 'stack-item stack-top',
-                { 'covered-blur': mvtLayerPosition === 'top' || (currentMode === 'maplibre' && !maplibreSandwichEnabled) }
+                { 'covered-blur': mvtLayerPosition === 'top' || (currentMode === 'maplibre' && !maplibreSandwichEnabled && viewDimension === '2d') }
               ]"
             >
               <div class="item-left">
@@ -456,7 +624,7 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
                 <strong>{{ t.middleLayer }}</strong>
               </div>
               <span class="badge-index">
-                {{ currentMode === 'arcgis' ? `Index ${calculatedArcgisIndex}` : 'Sandwich' }}
+                {{ viewDimension === '3d' ? '3D Globe Surface' : (currentMode === 'arcgis' ? `Index ${calculatedArcgisIndex}` : 'Sandwich') }}
               </span>
             </div>
 
@@ -469,8 +637,8 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
             </div>
           </div>
 
-          <!-- 层级相对位置调整 -->
-          <div class="z-switch-controls">
+          <!-- 层级相对位置调整 (仅 2D 视图下可切换) -->
+          <div v-if="viewDimension === '2d'" class="z-switch-controls">
             <button
               :class="['btn-z', { active: mvtLayerPosition === 'middle' }]"
               @click="mvtLayerPosition = 'middle'"
@@ -486,7 +654,7 @@ const handleChangeBasemap = (bm: 'gray-vector' | 'satellite' | 'streets-vector')
           </div>
 
           <!-- MapLibre 模式特有：三层夹心饼干架构开关 -->
-          <div v-if="currentMode === 'maplibre'" class="sandwich-toggle-box">
+          <div v-if="viewDimension === '2d' && currentMode === 'maplibre'" class="sandwich-toggle-box">
             <div class="toggle-row">
               <span class="toggle-label">{{ t.sandwichToggle }}</span>
               <input
@@ -772,6 +940,29 @@ body {
   background: #ffffff;
   color: #111827;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.btn-mode:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.8);
+}
+
+.dim-3d-hint {
+  background: #eff6ff;
+  border-left: 3px solid #3b82f6;
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 11px;
+  color: #1e40af;
+  line-height: 1.4;
+}
+
+.sub-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #d97706;
+  font-weight: 500;
 }
 
 /* ================= Z-Index 专属卡片样式 ================= */
