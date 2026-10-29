@@ -4,3 +4,9 @@ dist-demo
 *.local
 .DS_Store
 .vscode
+
+# 本地验证素材（瓦片体积较大，不入库）
+experiments/**/tiles/
+experiments/**/*.pbf
+experiments/**/mvt-sw.js
+experiments/**/*.png

@@ -1,7 +1,70 @@
-import maplibregl from 'maplibre-gl'
-import 'maplibre-gl/dist/maplibre-gl.css'
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as reactiveUtils from '@arcgis/core/core/reactiveUtils'
+import { MAPLIBRE_GLOBAL_KEY } from '../core/engineKeys'
 import type { MvtEngineType } from '../types'
+
+/**
+ * 外部注入的引擎库实例。
+ *
+ * 本库**不在构建期依赖 maplibre-gl / mapbox-gl**：
+ * 主入口不产生任何对它们的 import 语句，因此未使用这两个引擎的项目
+ * 无需安装它们即可正常打包。
+ *
+ * 启用方式（三选一）：
+ * 1. `import 'arcgis-mvt-renderer/maplibre'`（推荐，自动注册并带上样式）
+ * 2. `setMaplibre(maplibregl)` / `setMapbox(mapboxgl)` 手动注册
+ * 3. 通过 `engineInstance` 选项逐个图层传入
+ */
+const injectedEngines: { maplibre: any; mapbox: any } = { maplibre: null, mapbox: null }
+
+/** 注册 MapLibre GL 实例（全局生效） */
+export function setMaplibre(lib: any): void {
+  injectedEngines.maplibre = lib
+}
+
+/** 注册 Mapbox GL 实例（全局生效） */
+export function setMapbox(lib: any): void {
+  injectedEngines.mapbox = lib
+}
+
+/** 子入口 `arcgis-mvt-renderer/maplibre` 通过该全局键完成交接，避免共享 chunk */
+export { MAPLIBRE_GLOBAL_KEY }
+
+/** 解析可用的 MapLibre 实例：注入 → 全局交接 → window 全局 → 动态 import */
+export async function loadMaplibreLib(): Promise<any | null> {
+  if (injectedEngines.maplibre) return injectedEngines.maplibre
+
+  const g = globalThis as any
+  if (g[MAPLIBRE_GLOBAL_KEY]) return g[MAPLIBRE_GLOBAL_KEY]
+  if (typeof window !== 'undefined' && (window as any).maplibregl) return (window as any).maplibregl
+
+  try {
+    // 刻意构造不可被构建期静态分析的 specifier：
+    // 若写成字面量 import('maplibre-gl')，消费者的打包器会强制解析该依赖，
+    // 未安装 maplibre-gl 的项目将直接构建失败，违背「主入口零依赖」的承诺。
+    // 因此这里只在 CDN / importmap 等运行时可解析的场景生效；
+    // 经过打包器处理的项目请使用 `import 'arcgis-mvt-renderer/maplibre'`。
+    const pkg = ['maplibre', 'gl'].join('-')
+    const mod = await import(/* @vite-ignore */ pkg)
+    return (mod as any).default || mod
+  } catch {
+    return null
+  }
+}
+
+/** 解析可用的 Mapbox GL 实例 */
+export async function loadMapboxLib(): Promise<any | null> {
+  if (injectedEngines.mapbox) return injectedEngines.mapbox
+  if (typeof window !== 'undefined' && (window as any).mapboxgl) return (window as any).mapboxgl
+
+  try {
+    const pkg = ['mapbox', 'gl'].join('-')
+    const mod = await import(/* @vite-ignore */ pkg)
+    return (mod as any).default || mod
+  } catch {
+    return null
+  }
+}
 
 export interface SharedEngineOptions {
   engine?: MvtEngineType
@@ -60,47 +123,24 @@ export async function detectAvailableEngine(
     return { engine: engineName, lib: options.engineInstance }
   }
 
-  // 2. 显式指定 'arcgis' 原生模式
-  if (preferredEngine === 'arcgis') {
+  // 2. 显式指定 'arcgis' 原生模式 / 'native-fixed' 原生修正模式
+  if (preferredEngine === 'arcgis' || preferredEngine === 'native-fixed') {
     return { engine: 'arcgis' }
   }
 
-  const tryLoadMaplibre = async () => {
-    if (typeof window !== 'undefined' && (window as any).maplibregl) {
-      return (window as any).maplibregl
-    }
-    if (maplibregl) {
-      return maplibregl
-    }
-    try {
-      const pkg = 'maplibre-gl'
-      const mod = await import(/* @vite-ignore */ pkg)
-      return mod.default || mod
-    } catch {
-      return null
-    }
-  }
-
-  const tryLoadMapbox = async () => {
-    if (typeof window !== 'undefined' && (window as any).mapboxgl) {
-      return (window as any).mapboxgl
-    }
-    try {
-      const pkg = 'mapbox-gl'
-      const mod = await import(/* @vite-ignore */ pkg)
-      return mod.default || mod
-    } catch {
-      return null
-    }
-  }
+  const tryLoadMaplibre = loadMaplibreLib
+  const tryLoadMapbox = loadMapboxLib
 
   // 3. 显式指定 'maplibre'
   if (preferredEngine === 'maplibre') {
     const lib = await tryLoadMaplibre()
     if (!lib) {
       throw new Error(
-        '[arcgis-mvt-renderer] 指定了 engine="maplibre"，但在当前环境中未找到 maplibre-gl。\n' +
-        '请运行 `pnpm add maplibre-gl` 安装，或使用默认的 engine="auto"。'
+        '[arcgis-mvt-renderer] 指定了 engine="maplibre"，但当前环境中没有可用的 maplibre-gl。\n' +
+        '请安装后添加一行注册：\n' +
+        "  import 'maplibre-gl/dist/maplibre-gl.css'\n" +
+        "  import 'arcgis-mvt-renderer/maplibre'\n" +
+        '或改用 engine="native-fixed"（无需 MapLibre 即可修复面填充）。'
       )
     }
     return { engine: 'maplibre', lib }
@@ -111,8 +151,12 @@ export async function detectAvailableEngine(
     const lib = await tryLoadMapbox()
     if (!lib) {
       throw new Error(
-        '[arcgis-mvt-renderer] 指定了 engine="mapbox"，但在当前环境中未找到 mapbox-gl。\n' +
-        '请运行 `pnpm add mapbox-gl` 安装，或使用默认的 engine="auto"。'
+        '[arcgis-mvt-renderer] 指定了 engine="mapbox"，但当前环境中没有可用的 mapbox-gl。\n' +
+        '请安装后添加一行注册：\n' +
+        "  import 'mapbox-gl/dist/mapbox-gl.css'\n" +
+        '  import maplibregl from "mapbox-gl"\n' +
+        '  import { setMapbox } from "arcgis-mvt-renderer"\n' +
+        '  setMapbox(maplibregl)'
       )
     }
     return { engine: 'mapbox', lib }

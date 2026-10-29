@@ -1,20 +1,24 @@
 {
   "name": "arcgis-mvt-renderer",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Seamless MVT (Mapbox Vector Tile) rendering integration between ArcGIS Maps SDK and MapLibre/Mapbox GL. Framework-agnostic pure JS/TS class with optional Vue 3 components.",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "style": "./dist/arcgis-mvt-renderer.css",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
-    "./dist/style.css": "./dist/arcgis-mvt-renderer.css",
-    "./dist/arcgis-mvt-renderer.css": "./dist/arcgis-mvt-renderer.css"
+    "./maplibre": {
+      "types": "./dist/engines/maplibre.d.ts",
+      "import": "./dist/engines/maplibre.js",
+      "require": "./dist/engines/maplibre.cjs"
+    },
+    "./style.css": "./dist/style.css",
+    "./package.json": "./package.json"
   },
   "publishConfig": {
     "access": "public",
@@ -24,11 +28,13 @@
     "dist",
     "README.md",
     "README.zh-CN.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && vite build --config vite.config.maplibre.ts && vite build --config vite.config.sw.ts",
+    "verify:dist": "node scripts/verify-dist.mjs",
     "build:demo": "node --max-old-space-size=8192 ./node_modules/vite/bin/vite.js build --config vite.config.demo.ts",
     "preview:demo": "vite preview --config vite.config.demo.ts"
   },
@@ -40,8 +46,16 @@
     "vue3",
     "gis"
   ],
-  "author": "",
+  "author": "joo1es",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/joo1es/arcgis-mvt-renderer.git"
+  },
+  "homepage": "https://joo1es.github.io/arcgis-mvt-renderer/",
+  "bugs": {
+    "url": "https://github.com/joo1es/arcgis-mvt-renderer/issues"
+  },
   "peerDependencies": {
     "@arcgis/core": ">=4.20.0",
     "maplibre-gl": ">=3.0.0",

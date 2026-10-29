@@ -35,7 +35,7 @@ When working with third-party or custom MVT (Mapbox Vector Tile) services in **A
 `arcgis-mvt-renderer` bridges both worlds:
 1. **Pure TypeScript/JS Class by Default**: Export `ArcGISMvtLayer` directly. Works in **Vanilla JS, React, Angular, Vue, or any web framework**.
 2. **First-Class Vue 3 Support**: Optional `<MvtRenderer>` and `<MaplibreProvider>` components with full reactive bindings.
-3. **Multi-Engine Support (`engine`)**: Supports `engine="maplibre"` (default) or `engine="mapbox"`, plus fallback `engine="arcgis"`.
+3. **Multi-Engine Support (`engine`)**: Defaults to `engine="auto"`, which picks ArcGIS native rendering plus a Service Worker winding fix — zero extra dependencies, works in both 2D and 3D. You can also force `arcgis`, `native-fixed`, `maplibre`, or `mapbox`.
 4. **Shared WebGL Context Pool**: Multiple instances on the same ArcGIS view automatically share **a single engine instance and 1 WebGL canvas**, completely eliminating WebGL context limit issues (8~16 context browser limit)!
 5. **Zero Runtime Dependencies**: Completely free of third-party runtime dependencies.
 
@@ -45,9 +45,11 @@ When working with third-party or custom MVT (Mapbox Vector Tile) services in **A
 
 - 💎 **Framework-Agnostic Core**: Default export is the pure JS/TS class `ArcGISMvtLayer`. Zero UI framework lock-in.
 - ⚡ **Multi-Engine Support (`engine`)**:
-  - `engine="maplibre"` (Default): High-performance open-source MapLibre GL pipeline.
+  - `engine="auto"` (Default): Picks native rendering + Service Worker winding fix; falls back to dependency detection only if Service Workers are unavailable.
+  - `engine="native-fixed"`: Native rendering plus Service Worker winding fix, works in 2D and 3D without MapLibre.
+  - `engine="arcgis"`: Pure native `VectorTileLayer`, zero extra dependencies, no winding fix.
+  - `engine="maplibre"`: High-performance open-source MapLibre GL pipeline.
   - `engine="mapbox"`: Use Mapbox GL JS with full Style Spec and 3D globe capabilities.
-  - `engine="arcgis"`: Native `VectorTileLayer` mode.
 - 🛡️ **Singleton WebGL Context Pool**: Multiple layers on the same view share **1 canvas and 1 WebGL context** through automatic reference counting.
 - 🔄 **Real-Time Camera Synchronization**: Coordinates `center`, `zoom`, `resolution`, and `bearing` between ArcGIS MapView and MapLibre/Mapbox.
 - 🎯 **Standard `:style` Prop**: Pass standard Mapbox Style Spec v8 JSON objects or remote `style.json` URLs without custom transformations.
@@ -69,10 +71,54 @@ yarn add arcgis-mvt-renderer
 ```
 
 ### Peer Dependencies
-Make sure your project has the required peer dependencies installed:
+
+**Required**:
 
 ```bash
-pnpm add vue maplibre-gl @arcgis/core
+pnpm add @arcgis/core
+# plus vue if you use the Vue components
+pnpm add vue
+```
+
+**Optional (only for MapLibre / Mapbox engines)**:
+
+```bash
+pnpm add maplibre-gl   # engine="maplibre"
+pnpm add mapbox-gl     # engine="mapbox"
+```
+
+> The main entry `arcgis-mvt-renderer` contains **no static reference to maplibre-gl**
+> (neither runtime code nor type declarations), so projects can install, build and bundle
+> without it. The default `auto` engine uses ArcGIS native rendering plus a Service Worker
+> winding fix and needs no MapLibre at all.
+
+### Enabling MapLibre Mode
+
+Since the main entry has no static maplibre-gl dependency, register it once when using `engine="maplibre"`:
+
+**Option 1 — subpath entry (recommended)**
+
+```ts
+// main.ts
+import 'maplibre-gl/dist/maplibre-gl.css'
+import 'arcgis-mvt-renderer/maplibre'
+```
+
+**Option 2 — manual registration**
+
+```ts
+import maplibregl from 'maplibre-gl'
+import 'maplibre-gl/dist/maplibre-gl.css'
+import { setMaplibre } from 'arcgis-mvt-renderer'
+
+setMaplibre(maplibregl)
+```
+
+**Option 3 — per-layer instance**
+
+```ts
+import maplibregl from 'maplibre-gl'
+new ArcGISMvtLayer({ view, engine: 'maplibre', engineInstance: maplibregl, style })
 ```
 
 ---
@@ -127,7 +173,7 @@ app.use(ArcGISMvtRenderer)
 app.mount('#app')
 ```
 
-#### Single Component Usage (Recommended — Default `engine="maplibre"`)
+#### Single Component Usage (Default `engine="auto"`)
 
 Simply pass `:view` and `:style`. Multiple components on the same view automatically share a single WebGL canvas and context:
 
@@ -277,9 +323,9 @@ onMounted(() => {
 
 Both the pure JS class and Vue component share identical property options:
 
-| Prop / Option | Type | Default | Description |
+| Property | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `engine` | `'auto' \| 'maplibre' \| 'mapbox' \| 'arcgis'` | `'auto'` | Rendering engine mode. Defaults to `'auto'` (automatically detects whether `maplibre-gl` or `mapbox-gl` is installed in the project and initializes the appropriate WebGL engine; safely falls back to native ArcGIS mode if neither is installed or in 3D `SceneView`). |
+| `engine` | `'auto' \| 'native-fixed' \| 'arcgis' \| 'maplibre' \| 'mapbox'` | `'auto'` | Rendering engine mode. Defaults to `'auto'`: prefers native rendering with a Service Worker winding fix (equivalent to `native-fixed`), zero extra dependencies, works in 2D and 3D. Falls back to dependency detection (maplibre-gl → mapbox-gl → native) only when Service Workers are unavailable. |
 | `accessToken` | `string` | `undefined` | Mapbox Access Token (when `engine="mapbox"` is used). |
 | `engineInstance` | `any` | `undefined` | Optional direct reference to `maplibregl` or `mapboxgl` library module. |
 | `style` | `string \| Record<string, any>` | `undefined` | Standard Mapbox/ArcGIS Style Spec v8 object, JSON string, or remote `style.json` URL. Mutually interchangeable with `url`. |

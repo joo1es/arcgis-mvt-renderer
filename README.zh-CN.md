@@ -35,7 +35,7 @@
 `arcgis-mvt-renderer` 将两者的优势结合：
 1. **默认导出纯 JS/TS 原生类 (`ArcGISMvtLayer`)**：彻底脱离对 UI 框架的绑定。无论是纯原生 JS、React、Angular、Vue 还是微前端均可开箱即用。
 2. **专属 Vue 3 组件生态**：提供 `<MvtRenderer>` 与 `<MaplibreProvider>` 组件，支持响应式数据绑定与语法糖。
-3. **多引擎自由切换 (`engine`)**：默认 `engine="maplibre"`，支持 `engine="mapbox"` 享受 Mapbox 生态与 3D Globe 能力，并支持原生回退 `engine="arcgis"`。
+3. **多引擎自由切换 (`engine`)**：默认 `engine="auto"`，自动选择「ArcGIS 原生 + Service Worker 绕向修正」，零额外依赖且 2D / 3D 通用；也可显式指定 `arcgis` / `native-fixed` / `maplibre` / `mapbox`。
 4. **单例共享 WebGL 上下文池**：挂载在同一 View 上的多个图层自动共享**同一个引擎实例与 1 个 WebGL 上下文**，彻底规避浏览器 8~16 个 WebGL 上下文超限崩溃问题！
 5. **完全零运行时依赖**：代码库已剔除 `@vueuse/core`，运行时 0 额外第三方依赖包。
 
@@ -45,9 +45,11 @@
 
 - 💎 **框架解耦核心类**：默认导出原生类 `ArcGISMvtLayer`，命令式操作 API。
 - ⚡ **多引擎支持 (`engine`)**：
-  - `engine="maplibre"`（默认）：高性能开源 MapLibre GL 渲染管线。
+  - `engine="auto"`（默认）：自动选择「原生 + 绕向修正」；仅当 Service Worker 不可用时退回依赖探测。
+  - `engine="native-fixed"`：原生渲染 + Service Worker 绕向修正，2D / 3D 通用，无需 MapLibre。
+  - `engine="arcgis"`：纯原生渲染，零额外依赖、体积最小，但不修正绕向。
+  - `engine="maplibre"`：高性能开源 MapLibre GL 渲染管线，绕向容错最好。
   - `engine="mapbox"`：使用 Mapbox GL JS 渲染管线，支持样式规范与 3D Globe。
-  - `engine="arcgis"`：ArcGIS 原生 `VectorTileLayer`。
 - 🛡️ **单例 WebGL 上下文池**：挂载在同一 View 下的多个组件/图层实例自动引用计数，共享 **1 个 Canvas 画布与 1 个 WebGL 上下文**。
 - 🔄 **高精度视口同步**：实时将 ArcGIS MapView 的经纬度中心、分辨率、缩放级别与旋转角同步至 MapLibre / Mapbox。
 - 🎯 **标准 `:style` 入参**：直接使用标准 Mapbox Style Spec v8 样式对象或远程 `style.json` URL，无需在业务中做转译。
@@ -69,10 +71,53 @@ yarn add arcgis-mvt-renderer
 ```
 
 ### Peer Dependencies
-请确保宿主项目中安装了基础依赖：
+
+**必需**：
 
 ```bash
-pnpm add vue maplibre-gl @arcgis/core
+pnpm add @arcgis/core
+# 使用 Vue 组件时还需
+pnpm add vue
+```
+
+**可选（仅 MapLibre / Mapbox 模式需要）**：
+
+```bash
+pnpm add maplibre-gl   # engine="maplibre"
+pnpm add mapbox-gl     # engine="mapbox"
+```
+
+> 主入口 `arcgis-mvt-renderer` **不含任何对 maplibre-gl 的静态引用**（包括类型声明与样式），
+> 未安装它也能正常安装、构建、打包。默认引擎 `auto` 走「ArcGIS 原生 + Service Worker 绕向修正」，
+> 完全不需要 MapLibre。
+
+### 启用 MapLibre 模式
+
+主入口不静态依赖 maplibre-gl，因此启用 `engine="maplibre"` 时需额外注册一次（任选其一）：
+
+**方式一：子入口（推荐）**
+
+```ts
+// main.ts
+import 'maplibre-gl/dist/maplibre-gl.css'
+import 'arcgis-mvt-renderer/maplibre'
+```
+
+**方式二：手动注册**
+
+```ts
+import maplibregl from 'maplibre-gl'
+import 'maplibre-gl/dist/maplibre-gl.css'
+import { setMaplibre } from 'arcgis-mvt-renderer'
+
+setMaplibre(maplibregl)
+```
+
+**方式三：逐个图层传入**
+
+```ts
+import maplibregl from 'maplibre-gl'
+new ArcGISMvtLayer({ view, engine: 'maplibre', engineInstance: maplibregl, style })
 ```
 
 ---
@@ -127,7 +172,7 @@ app.use(ArcGISMvtRenderer)
 app.mount('#app')
 ```
 
-#### 单组件直接使用（推荐 —— 默认 `engine="maplibre"`）
+#### 单组件直接使用（默认 `engine="auto"`）
 
 直接传递 `:view` 与 `:style`。同一视图下的多个组件会自动共享单例 WebGL 上下文与画布：
 
@@ -279,7 +324,7 @@ onMounted(() => {
 
 | 属性名 / 配置项 | 类型 | 默认值 | 说明 |
 | :--- | :--- | :--- | :--- |
-| `engine` | `'auto' \| 'maplibre' \| 'mapbox' \| 'arcgis'` | `'auto'` | 渲染引擎模式。默认为 `'auto'`（自动智能检测当前环境安装的依赖：优先使用 `maplibre-gl`；若提供 token 或安装了 `mapbox-gl` 则使用 `mapbox-gl`；若均未安装或处于 3D `SceneView` 则安全降级至 ArcGIS 原生模式）。 |
+| `engine` | `'auto' \| 'native-fixed' \| 'arcgis' \| 'maplibre' \| 'mapbox'` | `'auto'` | 渲染引擎模式。默认 `'auto'`：优先「原生 + 绕向修正」（等价 `native-fixed`），零额外依赖且 2D/3D 通用；仅当 Service Worker 不可用时退回依赖探测（maplibre-gl → mapbox-gl → 原生）。`'arcgis'`：纯原生，不修正绕向。 |
 | `accessToken` | `string` | `undefined` | Mapbox Access Token（当 `engine="mapbox"` 时使用）。 |
 | `engineInstance` | `any` | `undefined` | 可选，直接传入外部引入的 `maplibregl` 或 `mapboxgl` 库模块实例。 |
 | `style` | `string \| Record<string, any>` | `undefined` | 标准 Mapbox/ArcGIS Style Spec v8 样式对象、JSON 字符串，或远程 `style.json` 访问地址。与 `url` 属性二选一。 |

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import VectorTileLayer from '@arcgis/core/layers/VectorTileLayer'
 import { acquireSharedEngine, detectAvailableEngine } from '../composables/useSharedMaplibre'
+import { ensureTileFixer, type TileFixerHandle } from './mvt/swBridge'
 import type { ArcGISMvtLayerOptions, MvtEngineType } from '../types'
 
 /**
@@ -13,10 +14,13 @@ export class ArcGISMvtLayer {
   public options: ArcGISMvtLayerOptions
   public engine: MvtEngineType
   public actualEngine: 'maplibre' | 'mapbox' | 'arcgis' = 'arcgis'
+  /** 是否启用 Service Worker 绕向修正（engine === 'native-fixed'） */
+  public windingFix = false
 
   private activeMapInstance: any = null
   private releaseSharedEngine: (() => void) | null = null
   private nativeArcgisLayer: VectorTileLayer | null = null
+  private tileFixer: TileFixerHandle | null = null
 
   private addedSourceIds: string[] = []
   private addedLayerIds: string[] = []
@@ -81,10 +85,16 @@ export class ArcGISMvtLayer {
     }
     if (this.isDestroyed) return
 
-    // 1. 自动探测并确定实际生效引擎
+    // 1. 'auto' / 'native-fixed' 先尝试启用绕向修正，再据此决定实际引擎
+    if (this.engine === 'auto' || this.engine === 'native-fixed') {
+      await this.ensureWindingFix(this.engine === 'auto')
+      if (this.isDestroyed) return
+    }
+
+    // 2. 确定实际生效引擎
     await this.resolveActualEngine()
 
-    // 2. 解析样式对象
+    // 3. 解析样式对象
     await this.resolveStyleInput()
 
     // 3. 根据引擎模式执行挂载
@@ -100,6 +110,34 @@ export class ArcGISMvtLayer {
    * 探测并解析实际运行的引擎
    */
   private async resolveActualEngine(): Promise<void> {
+    // 显式 native-fixed：始终走 ArcGIS 原生渲染 + Service Worker 修正
+    if (this.engine === 'native-fixed') {
+      this.actualEngine = 'arcgis'
+      this.windingFix = true
+      return
+    }
+
+    // 'auto'：优先「原生 + 绕向修正」（零额外依赖且 2D/3D 通用）。
+    // 仅当 Service Worker 不可用（非 HTTPS、未部署 mvt-sw.js 等）时，
+    // 才退回依赖探测：maplibre-gl → mapbox-gl → 原生。
+    if (this.engine === 'auto') {
+      if (this.tileFixer?.supported) {
+        this.actualEngine = 'arcgis'
+        this.windingFix = true
+        return
+      }
+
+      this.windingFix = false
+      const detected = await detectAvailableEngine('auto', {
+        accessToken: this.options.accessToken,
+        engineInstance: this.options.engineInstance,
+      })
+      this.actualEngine = detected.engine
+      return
+    }
+
+    this.windingFix = false
+
     if (this.view && this.view.type === '3d') {
       this.actualEngine = 'arcgis'
       return
@@ -110,6 +148,38 @@ export class ArcGISMvtLayer {
       engineInstance: this.options.engineInstance,
     })
     this.actualEngine = detected.engine
+  }
+
+  /**
+   * 确保绕向修正 Service Worker 已注册生效
+   * @param silent engine="auto" 的探测性注册，失败时不打印错误
+   */
+  private async ensureWindingFix(silent = false): Promise<void> {
+    if (this.tileFixer) return
+
+    const handle = await ensureTileFixer({
+      swUrl: this.options.swUrl,
+      scope: this.options.swScope,
+      patterns: this.options.swTilePatterns,
+      silent,
+    })
+
+    this.tileFixer = handle
+
+    if (!handle.supported && !silent) {
+      console.warn(
+        `[arcgis-mvt-renderer] engine="native-fixed" 未能启用绕向修正：${handle.reason}。\n` +
+          '将退回普通原生渲染，第三方 CCW 瓦片的面填充可能仍然缺失。'
+      )
+    }
+  }
+
+  /**
+   * 获取瓦片修正统计（仅 engine="native-fixed" 时有效）
+   */
+  public async getTileFixerStats() {
+    if (!this.tileFixer) return null
+    return this.tileFixer.getStats()
   }
 
   /**
@@ -277,6 +347,12 @@ export class ArcGISMvtLayer {
     if (!this.view || this.isDestroyed) return
     if (!this.resolvedStyle && !this.options.url) return
 
+    // 原生渲染前先确保瓦片绕向修正已生效（仅 native-fixed 模式）
+    if (this.windingFix) {
+      await this.ensureWindingFix()
+      if (this.isDestroyed) return
+    }
+
     if (typeof this.view.when === 'function') {
       await this.view.when()
     }
@@ -399,9 +475,15 @@ export class ArcGISMvtLayer {
     this.options.engine = engine
 
     const prevActual = this.actualEngine
+    const prevWindingFix = this.windingFix
+
+    if (engine === 'auto' || engine === 'native-fixed') {
+      await this.ensureWindingFix(engine === 'auto')
+    }
+
     await this.resolveActualEngine()
 
-    if (prevActual === this.actualEngine) return
+    if (prevActual === this.actualEngine && prevWindingFix === this.windingFix) return
 
     // 清理前一个引擎的图层与单例绑定
     if (prevActual === 'maplibre' || prevActual === 'mapbox') {

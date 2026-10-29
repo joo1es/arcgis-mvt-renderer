@@ -1,10 +1,8 @@
 <script lang="ts" setup>
-import maplibregl from 'maplibre-gl'
-import 'maplibre-gl/dist/maplibre-gl.css'
-
 import { ref, shallowRef, onMounted, onUnmounted, nextTick } from 'vue'
 import * as reactiveUtils from '@arcgis/core/core/reactiveUtils'
 import { provideMaplibreContext, useArcGISView } from '../composables/useMvtContext'
+import { loadMaplibreLib } from '../composables/useSharedMaplibre'
 import type { MaplibreProviderProps } from '../types'
 
 const props = withDefaults(
@@ -27,7 +25,7 @@ const view = useArcGISView(props.view)
 const containerRef = ref<HTMLDivElement>()
 const mapRef = ref<HTMLDivElement>()
 const loaded = ref(false)
-const map = shallowRef<maplibregl.Map | null>(null)
+const map = shallowRef<any | null>(null)
 const teleportTarget = shallowRef<HTMLElement | null>(null)
 
 // 注入 MapLibre 上下文，供子组件 MvtRenderer 获取
@@ -130,6 +128,16 @@ onMounted(async () => {
       `MapLibre GL 核心渲染管线严格基于 Web 墨卡托体系构建，在等经纬度投影（如 CGCS2000 WKID:4490 / WGS84 WKID:4326）或局部投影下会产生纬度拉伸错位。\n` +
       `👉 建议：非 3857 坐标系请直接使用 <MvtRenderer>（不包裹 MaplibreProvider），ArcGIS 原生模式完全支持任意自定义投影方案。`
     )
+  }
+
+  // 解析 MapLibre 引擎（主入口不静态依赖，需通过子入口或 setMaplibre 注册）
+  const maplibregl = await loadMaplibreLib()
+  if (!maplibregl) {
+    console.error(
+      '[MaplibreProvider] 未找到 maplibre-gl。\n' +
+        "请添加 `import 'arcgis-mvt-renderer/maplibre'`（推荐），或调用 setMaplibre(maplibregl) 手动注册。"
+    )
+    return
   }
 
   // 初始化 MapLibre GL 实例
